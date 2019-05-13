@@ -8,26 +8,38 @@ import io.alauda.jenkins.plugins.credentials.metadata.CredentialsWithMetadata;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * Scope defines where we can see credentials and what credentials we should display in these places.
+ */
 public interface KubernetesSecretScope extends ExtensionPoint {
 
-    boolean isScope(ItemGroup owner);
+    /**
+     * Check if this scope should include ItemGroup.
+     * @param owner ItemGroup will be checked.
+     * @return true if the scope includes this ItemGroup.
+     */
+    boolean isInScope(ItemGroup owner);
 
-    boolean isBelong(ItemGroup owner, CredentialsWithMetadata credentialsWithMetadata);
+    /**
+     * Check if the credentials should show under the ItemGroup
+     * @return true if the credentials should show in the ItemGroup
+     */
+    boolean shouldShowInScope(ItemGroup owner, CredentialsWithMetadata credentialsWithMetadata);
 
     static ExtensionList<KubernetesSecretScope> all() {
         return ExtensionList.lookup(KubernetesSecretScope.class);
     }
 
-    static boolean shouldBeScope(ItemGroup owner) {
+    static boolean hasMatchedScope(ItemGroup owner) {
         ExtensionList<KubernetesSecretScope> scopes = all();
 
-        return scopes.stream().anyMatch(s -> s.isScope(owner));
+        return scopes.stream().anyMatch(s -> s.isInScope(owner));
     }
 
-    static List<KubernetesSecretScope> matchScopes(ItemGroup owner) {
+    static List<KubernetesSecretScope> matchedScopes(ItemGroup owner) {
         ExtensionList<KubernetesSecretScope> scopes = all();
 
-        return scopes.stream().filter(s -> s.isScope(owner)).collect(Collectors.toList());
+        return scopes.stream().filter(s -> s.isInScope(owner)).collect(Collectors.toList());
     }
 
 }

@@ -6,22 +6,27 @@ import io.alauda.jenkins.plugins.credentials.KubernetesCredentialsProviderConfig
 import io.alauda.jenkins.plugins.credentials.metadata.CredentialsWithMetadata;
 import io.alauda.jenkins.plugins.credentials.metadata.NamespaceProvider;
 import jenkins.model.Jenkins;
+import org.apache.commons.lang.StringUtils;
 
 @Extension
 public class JenkinsRootScope implements KubernetesSecretScope {
     @Override
-    public boolean isScope(ItemGroup owner) {
+    public boolean isInScope(ItemGroup owner) {
         return owner == Jenkins.getInstance();
     }
 
     @Override
-    public boolean isBelong(ItemGroup owner, CredentialsWithMetadata credentialsWithMetadata) {
-        if (!isScope(owner)) {
+    public boolean shouldShowInScope(ItemGroup owner, CredentialsWithMetadata credentialsWithMetadata) {
+        if (!isInScope(owner)) {
             return false;
         }
 
-        return credentialsWithMetadata.getMetadata(NamespaceProvider.NAMESPACE_METADATA).equals(
-                KubernetesCredentialsProviderConfiguration.get().getGlobalNamespace());
+        String namespace = credentialsWithMetadata.getMetadata(NamespaceProvider.NAMESPACE_METADATA);
+        if (StringUtils.isEmpty(namespace)) {
+            return false;
+        }
+
+        return namespace.equals(KubernetesCredentialsProviderConfiguration.get().getGlobalNamespace());
 
     }
 }

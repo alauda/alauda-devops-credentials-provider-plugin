@@ -1,6 +1,5 @@
 package io.alauda.jenkins.plugins.credentials;
 
-import com.cloudbees.hudson.plugins.folder.AbstractFolder;
 import com.cloudbees.plugins.credentials.Credentials;
 import com.cloudbees.plugins.credentials.CredentialsProvider;
 import com.cloudbees.plugins.credentials.CredentialsStore;
@@ -10,7 +9,6 @@ import hudson.init.InitMilestone;
 import hudson.init.Initializer;
 import hudson.init.TermMilestone;
 import hudson.init.Terminator;
-import hudson.model.Item;
 import hudson.model.ItemGroup;
 import hudson.model.ModelObject;
 import hudson.security.ACL;
@@ -20,7 +18,7 @@ import io.alauda.jenkins.devops.config.KubernetesClusterConfigurationListener;
 import io.alauda.jenkins.devops.config.utils.CredentialsUtils;
 import io.alauda.jenkins.plugins.credentials.convertor.CredentialsConversionException;
 import io.alauda.jenkins.plugins.credentials.convertor.SecretToCredentialConverter;
-import io.alauda.jenkins.plugins.credentials.filter.KubernetesSecretFilter;
+import io.alauda.jenkins.plugins.credentials.rule.KubernetesSecretRule;
 import io.alauda.jenkins.plugins.credentials.metadata.CredentialsWithMetadata;
 import io.alauda.jenkins.plugins.credentials.metadata.MetadataProvider;
 import io.alauda.jenkins.plugins.credentials.scope.KubernetesSecretScope;
@@ -32,7 +30,6 @@ import io.alauda.kubernetes.api.model.SecretList;
 import io.alauda.kubernetes.client.ConfigBuilder;
 import io.alauda.kubernetes.client.*;
 import io.alauda.kubernetes.client.dsl.FilterWatchListMultiDeletable;
-import jenkins.model.Jenkins;
 import org.acegisecurity.Authentication;
 import org.apache.commons.lang.StringUtils;
 
@@ -141,10 +138,10 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
             List<C> list = new ArrayList<>();
             Set<String> ids = new HashSet<>();
 
-            List<KubernetesSecretScope> scopes = KubernetesSecretScope.matchScopes(itemGroup);
+            List<KubernetesSecretScope> scopes = KubernetesSecretScope.matchedScopes(itemGroup);
 
             credentials.forEach((id, credentialsWithMetadata) -> {
-                if (scopes.stream().anyMatch(scope -> scope.isBelong(itemGroup, credentialsWithMetadata))) {
+                if (scopes.stream().anyMatch(scope -> scope.shouldShowInScope(itemGroup, credentialsWithMetadata))) {
                     if (type.isAssignableFrom(credentialsWithMetadata.getCredentials().getClass()) && ids.add(id)) {
                         list.add(type.cast(credentialsWithMetadata.getCredentials()));
                     }
@@ -159,10 +156,10 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
 
     @Override
     public void eventReceived(Action action, Secret secret) {
-        String namespace = secret.getMetadata().getNamespace();
+        IdCredentials cred = convertSecret(secret);
+
         switch (action) {
             case ADDED: {
-                IdCredentials cred = convertSecret(secret);
                 if (cred != null) {
                     LOG.log(Level.FINE, "Secret Added - {0}", cred.getId());
                     CredentialsWithMetadata credWithMetadata = addMetadataToCredentials(secret, cred);
@@ -171,7 +168,6 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
                 break;
             }
             case MODIFIED: {
-                IdCredentials cred = convertSecret(secret);
                 if (cred != null) {
                     LOG.log(Level.FINE, "Secret Modified - {0}", cred.getId());
                     CredentialsWithMetadata credWithMetadata = addMetadataToCredentials(secret, cred);
@@ -180,10 +176,10 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
                 break;
             }
             case DELETED: {
-                if (credentials.containsKey(namespace)) {
-                    IdCredentials cred = convertSecret(secret);
 
-                    if (cred !=null) {
+                if (cred != null) {
+                    if (credentials.containsKey(cred.getId())) {
+
                         LOG.log(Level.FINE, "Secret Deleted - {0}", cred.getId());
                         credentials.remove(cred.getId());
                     }
@@ -265,7 +261,7 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
 
 
     private IdCredentials convertSecret(Secret s) {
-        if (KubernetesSecretFilter.shouldFilter(s)) {
+        if (KubernetesSecretRule.shouldExclude(s)) {
             return null;
         }
 
@@ -293,15 +289,15 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
 
     @Override
     public CredentialsStore getStore(ModelObject object) {
-
         if (!(object instanceof ItemGroup)) {
             return null;
         }
 
-        if (!KubernetesSecretScope.shouldBeScope((ItemGroup) object)) {
+        ItemGroup owner = (ItemGroup) object;
+        if (!KubernetesSecretScope.hasMatchedScope(owner)) {
             return null;
         }
 
-        return new AlaudaKubernetesCredentialsStore(this, (ItemGroup) object);
+        return new AlaudaKubernetesCredentialsStore(this, owner);
     }
 }
