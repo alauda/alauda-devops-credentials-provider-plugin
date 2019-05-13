@@ -17,13 +17,13 @@ import javax.annotation.Nonnull;
 import java.util.Collections;
 import java.util.List;
 
-public class KubernetesCredentialsStore extends CredentialsStore {
+public class AlaudaKubernetesCredentialsStore extends CredentialsStore {
     private final KubernetesCredentialsProvider provider;
     private final AlaudaKubernetesCredentialsStoreAction action = new AlaudaKubernetesCredentialsStoreAction(this);
 
     private ItemGroup owner;
 
-    public KubernetesCredentialsStore(KubernetesCredentialsProvider provider, ItemGroup owner) {
+    public AlaudaKubernetesCredentialsStore(KubernetesCredentialsProvider provider, ItemGroup owner) {
         super(KubernetesCredentialsProvider.class);
         this.provider = provider;
         this.owner = owner;
@@ -77,9 +77,9 @@ public class KubernetesCredentialsStore extends CredentialsStore {
     @ExportedBean
     public static class AlaudaKubernetesCredentialsStoreAction extends CredentialsStoreAction {
 
-        private final KubernetesCredentialsStore store;
+        private final AlaudaKubernetesCredentialsStore store;
 
-        private AlaudaKubernetesCredentialsStoreAction(KubernetesCredentialsStore store) {
+        private AlaudaKubernetesCredentialsStoreAction(AlaudaKubernetesCredentialsStore store) {
             this.store = store;
         }
 

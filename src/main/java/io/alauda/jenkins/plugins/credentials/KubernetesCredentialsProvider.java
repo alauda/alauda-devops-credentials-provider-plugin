@@ -20,7 +20,10 @@ import io.alauda.jenkins.devops.config.KubernetesClusterConfigurationListener;
 import io.alauda.jenkins.devops.config.utils.CredentialsUtils;
 import io.alauda.jenkins.plugins.credentials.convertor.CredentialsConversionException;
 import io.alauda.jenkins.plugins.credentials.convertor.SecretToCredentialConverter;
-import io.alauda.jenkins.plugins.credentials.filter.KubernetesSecretMatcher;
+import io.alauda.jenkins.plugins.credentials.filter.KubernetesSecretFilter;
+import io.alauda.jenkins.plugins.credentials.metadata.CredentialsWithMetadata;
+import io.alauda.jenkins.plugins.credentials.metadata.MetadataProvider;
+import io.alauda.jenkins.plugins.credentials.scope.KubernetesSecretScope;
 import io.alauda.kubernetes.api.model.LabelSelector;
 import io.alauda.kubernetes.api.model.LabelSelectorBuilder;
 import io.alauda.kubernetes.api.model.LabelSelectorRequirementBuilder;
@@ -48,11 +51,11 @@ import static java.net.HttpURLConnection.HTTP_GONE;
 public class KubernetesCredentialsProvider extends CredentialsProvider implements Watcher<Secret>, KubernetesClusterConfigurationListener {
 
     private static final Logger LOG
-            = Logger.getLogger(KubernetesCredentialsStore.class.getName());
+            = Logger.getLogger(AlaudaKubernetesCredentialsStore.class.getName());
     private static final String DEFAULT_RESOURCE_VERSION = "0";
 
-    // Maps of credentials keyed by namespace and credentials ID
-    private ConcurrentHashMap<String, ConcurrentHashMap<String, IdCredentials>> credentials = new ConcurrentHashMap<>();
+    // Maps of credentials keyed by credentials ID
+    private ConcurrentHashMap<String, CredentialsWithMetadata> credentials = new ConcurrentHashMap<>();
 
     private KubernetesClient client;
     private Watch watch;
@@ -65,7 +68,7 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
 
     private void startWatchingForSecrets(KubernetesCluster cluster) {
         KubernetesClient _client = initializeKubernetesClientFromCLuster(cluster);
-        ConcurrentHashMap<String, ConcurrentHashMap<String, IdCredentials>> _credentials = new ConcurrentHashMap<>();
+        ConcurrentHashMap<String, CredentialsWithMetadata> _credentials = new ConcurrentHashMap<>();
 
         String labelSelector = KubernetesCredentialsProviderConfiguration.get().getLabelSelector();
         LabelSelector selector = null;
@@ -94,10 +97,8 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
         for (Secret s : secrets) {
             IdCredentials cred = convertSecret(s);
             if (cred != null) {
-                String namespace = s.getMetadata().getNamespace();
-
-                _credentials.putIfAbsent(namespace, new ConcurrentHashMap<>());
-                _credentials.get(namespace).put(SecretUtils.getCredentialId(s), cred);
+                CredentialsWithMetadata credWithMetadata = addMetadataToCredentials(s, cred);
+                _credentials.put(credWithMetadata.getCredentials().getId(), credWithMetadata);
             }
         }
 
@@ -134,82 +135,58 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
 
     @Nonnull
     @Override
-    public <C extends Credentials> List<C> getCredentials(@Nonnull Class<C> type, ItemGroup itemGroup, Authentication authentication) {
+    public <C extends Credentials> List<C> getCredentials(@Nonnull Class<C> type, final ItemGroup itemGroup, Authentication authentication) {
         LOG.log(Level.FINEST, "getCredentials called with type {0} and authentication {1}", new Object[]{type.getName(), authentication});
         if (ACL.SYSTEM.equals(authentication)) {
             List<C> list = new ArrayList<>();
-
-            // when item group is Jenkins root, we show all credentials
-            if (itemGroup instanceof Jenkins) {
-                credentials.entrySet().stream()
-                        .filter(namespaceCredentials ->
-                                namespaceCredentials.getKey().equals(KubernetesCredentialsProviderConfiguration.get().getSharedNamespace()))
-                        .flatMap(namespaceCredentials -> namespaceCredentials.getValue().entrySet().stream())
-                        .forEach(stringIdCredentials -> {
-                            if (type.isAssignableFrom(stringIdCredentials.getValue().getClass())) {
-                                list.add(type.cast(stringIdCredentials.getValue()));
-                            }
-                        });
-                return list;
-            }
-
             Set<String> ids = new HashSet<>();
-            while (itemGroup != null) {
-                if (itemGroup instanceof AbstractFolder) {
-                    final AbstractFolder<?> folder = (AbstractFolder) itemGroup;
-                    // we use namespace as folder name
-                    String namespace = folder.getName();
-                    credentials.entrySet().stream()
-                            .filter(namespaceCredentials -> namespaceCredentials.getKey().equals(namespace))
-                            .flatMap(namespaceCredentials -> namespaceCredentials.getValue().entrySet().stream())
-                            .filter(stringIdCredentials -> type.isAssignableFrom(stringIdCredentials.getValue().getClass()))
-                            .forEach(stringIdCredentials -> {
-                              if (ids.add(stringIdCredentials.getKey())) {
-                                  list.add(type.cast(stringIdCredentials.getValue()));
-                              }
-                            });
-                }
 
-                if (itemGroup instanceof Item) {
-                    itemGroup = ((Item) itemGroup).getParent();
-                } else {
-                    break;
+            List<KubernetesSecretScope> scopes = KubernetesSecretScope.matchScopes(itemGroup);
+
+            credentials.forEach((id, credentialsWithMetadata) -> {
+                if (scopes.stream().anyMatch(scope -> scope.isBelong(itemGroup, credentialsWithMetadata))) {
+                    if (type.isAssignableFrom(credentialsWithMetadata.getCredentials().getClass()) && ids.add(id)) {
+                        list.add(type.cast(credentialsWithMetadata.getCredentials()));
+                    }
                 }
-            }
+            });
+
             return list;
         }
         return Collections.emptyList();
     }
 
 
-
-
-
     @Override
     public void eventReceived(Action action, Secret secret) {
-        String credentialId = SecretUtils.getCredentialId(secret);
         String namespace = secret.getMetadata().getNamespace();
         switch (action) {
             case ADDED: {
-                LOG.log(Level.FINE, "Secret Added - {0}", credentialId);
                 IdCredentials cred = convertSecret(secret);
                 if (cred != null) {
-                    credentialsInNamespace(namespace).put(credentialId, cred);
+                    LOG.log(Level.FINE, "Secret Added - {0}", cred.getId());
+                    CredentialsWithMetadata credWithMetadata = addMetadataToCredentials(secret, cred);
+                    credentials.put(cred.getId(), credWithMetadata);
                 }
                 break;
             }
             case MODIFIED: {
-                LOG.log(Level.FINE, "Secret Modified - {0}", credentialId);
                 IdCredentials cred = convertSecret(secret);
                 if (cred != null) {
-                    credentialsInNamespace(namespace).put(credentialId, cred);
+                    LOG.log(Level.FINE, "Secret Modified - {0}", cred.getId());
+                    CredentialsWithMetadata credWithMetadata = addMetadataToCredentials(secret, cred);
+                    credentials.put(cred.getId(), credWithMetadata);
                 }
                 break;
             }
             case DELETED: {
-                LOG.log(Level.FINE, "Secret Deleted - {0}", credentialId);
                 if (credentials.containsKey(namespace)) {
-                    credentials.get(namespace).remove(credentialId);
+                    IdCredentials cred = convertSecret(secret);
+
+                    if (cred !=null) {
+                        LOG.log(Level.FINE, "Secret Deleted - {0}", cred.getId());
+                        credentials.remove(cred.getId());
+                    }
                 }
                 break;
             }
@@ -218,10 +195,12 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
         }
     }
 
-    @Nonnull
-    private Map<String, IdCredentials> credentialsInNamespace(String namespace) {
-        credentials.putIfAbsent(namespace, new ConcurrentHashMap<>());
-        return credentials.get(namespace);
+    private CredentialsWithMetadata addMetadataToCredentials(Secret s, IdCredentials cred) {
+        CredentialsWithMetadata credWithMetadata = new CredentialsWithMetadata<>(cred);
+
+        MetadataProvider.all().forEach(metadataProvider -> metadataProvider.attach(s, credWithMetadata));
+
+        return credWithMetadata;
     }
 
     @Override
@@ -286,7 +265,7 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
 
 
     private IdCredentials convertSecret(Secret s) {
-        if (!KubernetesSecretMatcher.isMatch(s)) {
+        if (KubernetesSecretFilter.shouldFilter(s)) {
             return null;
         }
 
@@ -314,9 +293,15 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
 
     @Override
     public CredentialsStore getStore(ModelObject object) {
-        if (object instanceof AbstractFolder || object == Jenkins.getInstance()) {
-            return new KubernetesCredentialsStore(this, (ItemGroup) object);
+
+        if (!(object instanceof ItemGroup)) {
+            return null;
         }
-        return null;
+
+        if (!KubernetesSecretScope.shouldBeScope((ItemGroup) object)) {
+            return null;
+        }
+
+        return new AlaudaKubernetesCredentialsStore(this, (ItemGroup) object);
     }
 }
