@@ -59,7 +59,7 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
                                 labelSelector,
                                 null,
                                 null,
-                                        callGeneratorParams.resourceVersion,
+                                callGeneratorParams.resourceVersion,
                                 callGeneratorParams.timeoutSeconds,
                                 callGeneratorParams.watch,
                                 null,
