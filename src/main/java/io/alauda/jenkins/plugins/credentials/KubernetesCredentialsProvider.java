@@ -6,6 +6,7 @@ import com.cloudbees.plugins.credentials.CredentialsStore;
 import com.cloudbees.plugins.credentials.common.IdCredentials;
 import com.google.gson.reflect.TypeToken;
 import hudson.Extension;
+import hudson.ExtensionList;
 import hudson.model.ItemGroup;
 import hudson.model.ModelObject;
 import hudson.security.ACL;
@@ -15,6 +16,7 @@ import io.alauda.jenkins.plugins.credentials.convertor.SecretToCredentialConvert
 import io.alauda.jenkins.plugins.credentials.metadata.CredentialsWithMetadata;
 import io.alauda.jenkins.plugins.credentials.metadata.MetadataProvider;
 import io.alauda.jenkins.plugins.credentials.rule.KubernetesSecretRule;
+import io.alauda.jenkins.plugins.credentials.scope.JenkinsRootScope;
 import io.alauda.jenkins.plugins.credentials.scope.KubernetesSecretScope;
 import io.kubernetes.client.ApiClient;
 import io.kubernetes.client.ApiException;
@@ -24,6 +26,7 @@ import io.kubernetes.client.informer.SharedIndexInformer;
 import io.kubernetes.client.informer.SharedInformerFactory;
 import io.kubernetes.client.models.V1Secret;
 import io.kubernetes.client.models.V1SecretList;
+import jenkins.model.Jenkins;
 import org.acegisecurity.Authentication;
 
 import javax.annotation.Nonnull;
@@ -134,6 +137,10 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
             Set<String> ids = new HashSet<>();
 
             List<KubernetesSecretScope> scopes = KubernetesSecretScope.matchedScopes(itemGroup);
+
+            if(scopes.stream().noneMatch(s -> s.getClass().equals(JenkinsRootScope.class))) {
+                scopes.addAll(ExtensionList.lookup(JenkinsRootScope.class));
+            }
 
             credentials.forEach((id, credentialsWithMetadata) -> {
                 if (scopes.stream().anyMatch(scope -> scope.shouldShowInScope(itemGroup, credentialsWithMetadata))) {
