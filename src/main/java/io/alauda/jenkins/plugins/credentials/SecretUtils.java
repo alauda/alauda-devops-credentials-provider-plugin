@@ -174,10 +174,10 @@ public abstract class SecretUtils {
     public static String getNonNullSecretData(V1Secret s, String key, String exceptionMessage) throws CredentialsConversionException {
         String mappedKey = getKeyName(s, key);
         if (mappedKey == key) { // use String == as getKeyName(key) will return key if no custom mapping is defined)
-            String data = s.getData().get(key) == null ? null : new String(s.getData().get(key));
+            String data = s.getData().get(key) == null ? null : new String(s.getData().get(key), StandardCharsets.UTF_8);
             return requireNonNull(data, exceptionMessage, null);
         }
-        String data = s.getData().get(mappedKey) == null ? null : new String(s.getData().get(mappedKey));
+        String data = s.getData().get(mappedKey) == null ? null : new String(s.getData().get(mappedKey), StandardCharsets.UTF_8);
         return requireNonNull(data, exceptionMessage, mappedKey);
     }
 
