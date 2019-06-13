@@ -2,11 +2,13 @@ package io.alauda.jenkins.plugins.credentials.convertor;
 
 import com.cloudbees.plugins.credentials.CredentialsScope;
 import com.cloudbees.plugins.credentials.common.IdCredentials;
+import hudson.Extension;
 import hudson.util.Secret;
 import io.alauda.jenkins.plugins.credentials.SecretUtils;
 import io.kubernetes.client.models.V1Secret;
 import org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl;
 
+@Extension
 public class ServiceAccountTokenCredentialsConverter extends SecretToCredentialConverter {
     private static final String SERVICE_ACCOUNT_TOKEN_TYPE = "kubernetes.io/service-account-token";
 
