@@ -2,7 +2,7 @@ package io.alauda.jenkins.plugins.credentials.metadata;
 
 import hudson.ExtensionList;
 import hudson.ExtensionPoint;
-import io.alauda.kubernetes.api.model.Secret;
+import io.kubernetes.client.models.V1Secret;
 
 /**
  * Provide metadata sources that implementations can get metadata from sources and add them to credentials.
@@ -14,7 +14,7 @@ public interface MetadataProvider extends ExtensionPoint {
      * @param secret Secret in K8s
      * @param credentialsWithMetadata credentials that converted from Secret
      */
-    void attach(Secret secret, CredentialsWithMetadata credentialsWithMetadata);
+    void attach(V1Secret secret, CredentialsWithMetadata credentialsWithMetadata);
 
     static ExtensionList<MetadataProvider> all() {
         return ExtensionList.lookup(MetadataProvider.class);

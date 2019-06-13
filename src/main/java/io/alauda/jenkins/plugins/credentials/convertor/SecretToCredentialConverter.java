@@ -26,7 +26,7 @@ package io.alauda.jenkins.plugins.credentials.convertor;
 import com.cloudbees.plugins.credentials.common.IdCredentials;
 import hudson.ExtensionList;
 import hudson.ExtensionPoint;
-import io.alauda.kubernetes.api.model.Secret;
+import io.kubernetes.client.models.V1Secret;
 
 /**
  * Class that converts a secret of a given type to an {@link IdCredentials}.
@@ -47,7 +47,7 @@ public abstract class SecretToCredentialConverter implements ExtensionPoint {
      * @throws CredentialsConversionException if the Secret could not be converted.
      * @return the IdCredentials created from the secret.
      */
-    public abstract IdCredentials convert(Secret secret) throws CredentialsConversionException;
+    public abstract IdCredentials convert(V1Secret secret) throws CredentialsConversionException;
 
     /**
      * Helper to obtain all the implementations of this {@code ExtensionPoint}

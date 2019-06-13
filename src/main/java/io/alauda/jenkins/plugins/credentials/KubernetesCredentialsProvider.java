@@ -4,129 +4,124 @@ import com.cloudbees.plugins.credentials.Credentials;
 import com.cloudbees.plugins.credentials.CredentialsProvider;
 import com.cloudbees.plugins.credentials.CredentialsStore;
 import com.cloudbees.plugins.credentials.common.IdCredentials;
+import com.google.gson.reflect.TypeToken;
 import hudson.Extension;
-import hudson.init.InitMilestone;
-import hudson.init.Initializer;
-import hudson.init.TermMilestone;
-import hudson.init.Terminator;
 import hudson.model.ItemGroup;
 import hudson.model.ModelObject;
 import hudson.security.ACL;
-import io.alauda.jenkins.devops.config.KubernetesCluster;
-import io.alauda.jenkins.devops.config.KubernetesClusterConfiguration;
-import io.alauda.jenkins.devops.config.KubernetesClusterConfigurationListener;
-import io.alauda.jenkins.devops.config.utils.CredentialsUtils;
+import io.alauda.jenkins.devops.support.controller.Controller;
 import io.alauda.jenkins.plugins.credentials.convertor.CredentialsConversionException;
 import io.alauda.jenkins.plugins.credentials.convertor.SecretToCredentialConverter;
-import io.alauda.jenkins.plugins.credentials.rule.KubernetesSecretRule;
 import io.alauda.jenkins.plugins.credentials.metadata.CredentialsWithMetadata;
 import io.alauda.jenkins.plugins.credentials.metadata.MetadataProvider;
+import io.alauda.jenkins.plugins.credentials.rule.KubernetesSecretRule;
 import io.alauda.jenkins.plugins.credentials.scope.KubernetesSecretScope;
-import io.alauda.kubernetes.api.model.LabelSelector;
-import io.alauda.kubernetes.api.model.LabelSelectorBuilder;
-import io.alauda.kubernetes.api.model.LabelSelectorRequirementBuilder;
-import io.alauda.kubernetes.api.model.Secret;
-import io.alauda.kubernetes.api.model.SecretList;
-import io.alauda.kubernetes.client.ConfigBuilder;
-import io.alauda.kubernetes.client.*;
-import io.alauda.kubernetes.client.dsl.FilterWatchListMultiDeletable;
+import io.kubernetes.client.ApiClient;
+import io.kubernetes.client.ApiException;
+import io.kubernetes.client.apis.CoreV1Api;
+import io.kubernetes.client.informer.ResourceEventHandler;
+import io.kubernetes.client.informer.SharedIndexInformer;
+import io.kubernetes.client.informer.SharedInformerFactory;
+import io.kubernetes.client.models.V1Secret;
+import io.kubernetes.client.models.V1SecretList;
 import org.acegisecurity.Authentication;
-import org.apache.commons.lang.StringUtils;
 
 import javax.annotation.Nonnull;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.security.GeneralSecurityException;
+import java.lang.reflect.Type;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import static java.net.HttpURLConnection.HTTP_GONE;
-
 @Extension
-public class KubernetesCredentialsProvider extends CredentialsProvider implements Watcher<Secret>, KubernetesClusterConfigurationListener {
+public class KubernetesCredentialsProvider extends CredentialsProvider implements Controller<V1Secret, V1SecretList> {
 
     private static final Logger LOG
             = Logger.getLogger(AlaudaKubernetesCredentialsStore.class.getName());
-    private static final String DEFAULT_RESOURCE_VERSION = "0";
+    private SharedIndexInformer<V1Secret> secretInformer;
 
     // Maps of credentials keyed by credentials ID
     private ConcurrentHashMap<String, CredentialsWithMetadata> credentials = new ConcurrentHashMap<>();
 
-    private KubernetesClient client;
-    private Watch watch;
-
-    @Initializer(after = InitMilestone.PLUGINS_PREPARED, fatal = false)
-    public void startWatchingForSecrets() {
-        KubernetesCluster cluster = KubernetesClusterConfiguration.get().getCluster();
-        startWatchingForSecrets(cluster);
-    }
-
-    private void startWatchingForSecrets(KubernetesCluster cluster) {
-        KubernetesClient _client = initializeKubernetesClientFromCLuster(cluster);
-        ConcurrentHashMap<String, CredentialsWithMetadata> _credentials = new ConcurrentHashMap<>();
-
+    @Override
+    public void initialize(ApiClient apiClient, SharedInformerFactory sharedInformerFactory) {
         String labelSelector = KubernetesCredentialsProviderConfiguration.get().getLabelSelector();
-        LabelSelector selector = null;
 
-        if (!StringUtils.isEmpty(labelSelector)) {
-            selector = new LabelSelectorBuilder()
-                    .addToMatchExpressions(new LabelSelectorRequirementBuilder().addToValues(labelSelector).build())
-                    .build();
-        }
+        CoreV1Api coreV1Api = new CoreV1Api();
 
+        secretInformer = sharedInformerFactory.sharedIndexInformerFor(
+                callGeneratorParams -> {
+                    try {
+                        return coreV1Api.listSecretForAllNamespacesCall(
+                                null,
+                                null,
+                                null,
+                                labelSelector,
+                                null,
+                                null,
+                                        callGeneratorParams.resourceVersion,
+                                callGeneratorParams.timeoutSeconds,
+                                callGeneratorParams.watch,
+                                null,
+                                null);
+                    } catch (ApiException e) {
+                        throw new RuntimeException(e);
+                    }
+                }, V1Secret.class, V1SecretList.class);
 
-        SecretList secretList = _client.secrets().inAnyNamespace().list();
-
-        if (secretList == null) {
-            credentials = _credentials;
-            client = _client;
-
-            watch = initializeWatch(selector, DEFAULT_RESOURCE_VERSION);
-            return;
-
-        }
-
-        String resourceVersion = secretList.getMetadata().getResourceVersion();
-        List<Secret> secrets = secretList.getItems();
-
-        for (Secret s : secrets) {
-            IdCredentials cred = convertSecret(s);
-            if (cred != null) {
-                CredentialsWithMetadata credWithMetadata = addMetadataToCredentials(s, cred);
-                _credentials.put(credWithMetadata.getCredentials().getId(), credWithMetadata);
+        secretInformer.addEventHandler(new ResourceEventHandler<V1Secret>() {
+            @Override
+            public void onAdd(V1Secret secret) {
+                IdCredentials cred = convertSecret(secret);
+                if (cred != null) {
+                    LOG.log(Level.FINE, "Secret Added - {0}", cred.getId());
+                    CredentialsWithMetadata credWithMetadata = addMetadataToCredentials(secret, cred);
+                    credentials.put(cred.getId(), credWithMetadata);
+                }
             }
-        }
 
-        credentials = _credentials;
-        client = _client;
+            @Override
+            public void onUpdate(V1Secret oldSecret, V1Secret newSecret) {
+                IdCredentials cred = convertSecret(newSecret);
+                if (cred != null) {
+                    LOG.log(Level.FINE, "Secret Modified - {0}", cred.getId());
+                    CredentialsWithMetadata credWithMetadata = addMetadataToCredentials(newSecret, cred);
+                    credentials.put(cred.getId(), credWithMetadata);
+                }
+            }
 
-        watch = initializeWatch(selector, resourceVersion);
+            @Override
+            public void onDelete(V1Secret secret, boolean deletedFinalStateUnknown) {
+                IdCredentials cred = convertSecret(secret);
+
+                if (cred != null) {
+                    if (credentials.containsKey(cred.getId())) {
+
+                        LOG.log(Level.FINE, "Secret Deleted - {0}", cred.getId());
+                        credentials.remove(cred.getId());
+                    }
+                }
+            }
+        });
     }
 
-    private Watch initializeWatch(LabelSelector selector, String resourceVersion) {
-        FilterWatchListMultiDeletable<Secret, SecretList, Boolean, Watch, Watcher<Secret>> watchList = client.secrets()
-                .inAnyNamespace();
-        if (selector != null) {
-            watchList.withLabelSelector(selector);
-        }
-
-
-        return watchList.withResourceVersion(resourceVersion)
-                .watch(this);
+    @Override
+    public void start() {
     }
 
-    @Terminator(after = TermMilestone.STARTED)
-    public void stopWatchingForSecrets() {
-        if (watch != null) {
-            watch.close();
-            watch = null;
-        }
-        if (client != null) {
-            client.close();
-            client = null;
-        }
+    @Override
+    public void shutDown(Throwable throwable) {
+
+    }
+
+    @Override
+    public boolean hasSynced() {
+        return secretInformer.hasSynced();
+    }
+
+    @Override
+    public Type getType() {
+        return new TypeToken<V1Secret>(){}.getType();
     }
 
 
@@ -154,44 +149,7 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
     }
 
 
-    @Override
-    public void eventReceived(Action action, Secret secret) {
-        IdCredentials cred = convertSecret(secret);
-
-        switch (action) {
-            case ADDED: {
-                if (cred != null) {
-                    LOG.log(Level.FINE, "Secret Added - {0}", cred.getId());
-                    CredentialsWithMetadata credWithMetadata = addMetadataToCredentials(secret, cred);
-                    credentials.put(cred.getId(), credWithMetadata);
-                }
-                break;
-            }
-            case MODIFIED: {
-                if (cred != null) {
-                    LOG.log(Level.FINE, "Secret Modified - {0}", cred.getId());
-                    CredentialsWithMetadata credWithMetadata = addMetadataToCredentials(secret, cred);
-                    credentials.put(cred.getId(), credWithMetadata);
-                }
-                break;
-            }
-            case DELETED: {
-
-                if (cred != null) {
-                    if (credentials.containsKey(cred.getId())) {
-
-                        LOG.log(Level.FINE, "Secret Deleted - {0}", cred.getId());
-                        credentials.remove(cred.getId());
-                    }
-                }
-                break;
-            }
-            case ERROR:
-                LOG.log(Level.WARNING, "Action received of type Error. {0}", secret);
-        }
-    }
-
-    private CredentialsWithMetadata addMetadataToCredentials(Secret s, IdCredentials cred) {
+    private CredentialsWithMetadata addMetadataToCredentials(V1Secret s, IdCredentials cred) {
         CredentialsWithMetadata credWithMetadata = new CredentialsWithMetadata<>(cred);
 
         MetadataProvider.all().forEach(metadataProvider -> metadataProvider.attach(s, credWithMetadata));
@@ -199,68 +157,8 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
         return credWithMetadata;
     }
 
-    @Override
-    public void onClose(KubernetesClientException cause) {
-        LOG.log(Level.SEVERE, "Watcher stopped");
 
-        if (cause != null) {
-            LOG.warning(cause.toString());
-            // restart watcher when http connect is gone
-            if (cause.getStatus() != null && cause.getStatus().getCode() == HTTP_GONE) {
-                stopWatchingForSecrets();
-                startWatchingForSecrets();
-            }
-        }
-    }
-
-
-    @Override
-    public void onConfigChange(KubernetesCluster kubernetesCluster) {
-        stopWatchingForSecrets();
-        startWatchingForSecrets(kubernetesCluster);
-    }
-
-    /**
-     * Create a Kubernetes client by cluster configuration
-     *
-     * @param cluster Kubernetes cluster
-     * @return Kubernetes client
-     */
-    private KubernetesClient initializeKubernetesClientFromCLuster(KubernetesCluster cluster) {
-        ConfigBuilder configBuilder = new ConfigBuilder();
-
-        if (cluster == null) {
-            return new DefaultKubernetesClient(configBuilder.build());
-        }
-
-        if (!StringUtils.isEmpty(cluster.getMasterUrl())) {
-            configBuilder.withMasterUrl(cluster.getMasterUrl());
-        }
-
-        if (!StringUtils.isEmpty(cluster.getCredentialsId())) {
-            try {
-                String token = CredentialsUtils.getToken(cluster.getCredentialsId());
-                configBuilder.withOauthToken(token);
-            } catch (GeneralSecurityException e) {
-                e.printStackTrace();
-            }
-        }
-
-        configBuilder.withTrustCerts(cluster.isSkipTlsVerify());
-
-        if (!StringUtils.isEmpty(cluster.getServerCertificateAuthority())) {
-            if (Files.exists(Paths.get(cluster.getServerCertificateAuthority()))) {
-                configBuilder.withCaCertFile(cluster.getServerCertificateAuthority());
-            } else {
-                configBuilder.withCaCertData(cluster.getServerCertificateAuthority());
-            }
-        }
-
-        return new DefaultKubernetesClient(configBuilder.build());
-    }
-
-
-    private IdCredentials convertSecret(Secret s) {
+    private IdCredentials convertSecret(V1Secret s) {
         if (KubernetesSecretRule.shouldExclude(s)) {
             return null;
         }
@@ -283,7 +181,7 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
         return null;
     }
 
-    private String getSecretType(Secret s) {
+    private String getSecretType(V1Secret s) {
         return s.getType();
     }
 
@@ -300,4 +198,6 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
 
         return new AlaudaKubernetesCredentialsStore(this, owner);
     }
+
+
 }
