@@ -27,7 +27,7 @@ import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.Nullable;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.alauda.jenkins.plugins.credentials.convertor.CredentialsConversionException;
-import io.alauda.kubernetes.api.model.Secret;
+import io.kubernetes.client.models.V1Secret;
 import org.kohsuke.accmod.Restricted;
 import org.kohsuke.accmod.restrictions.NoExternalUse;
 
@@ -44,7 +44,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Collection of utilities for working with {@link Secret}s.
+ * Collection of utilities for working with {@link V1Secret}s.
  * <em>Note</em>: API may be subject to change.
  */
 public abstract class SecretUtils {
@@ -104,7 +104,7 @@ public abstract class SecretUtils {
      * @param s the secret whose id we want to obtain.
      * @return the credential ID for a given secret.
      */
-    public static String getCredentialId(Secret s) {
+    public static String getCredentialId(V1Secret s) {
         // we must have a metadata as the label that identifies this as a Jenkins credential needs to be present
         return s.getMetadata().getNamespace() + "-" + s.getMetadata().getName();
     }
@@ -115,7 +115,7 @@ public abstract class SecretUtils {
      * @return the credential description for a given secret.
      */
     @CheckForNull
-    public static String getCredentialDescription(Secret s) {
+    public static String getCredentialDescription(V1Secret s) {
         // we must have a metadata as the label that identifies this as a Jenkins credential needs to be present
         Map<String, String> annotations = s.getMetadata().getAnnotations();
         if (annotations != null) {
@@ -171,12 +171,14 @@ public abstract class SecretUtils {
      * @throws CredentialsConversionException if the data was not present.
      */
     @SuppressFBWarnings(value= {"ES_COMPARING_PARAMETER_STRING_WITH_EQ"}, justification="the string will be the same string if not mapped")
-    public static String getNonNullSecretData(Secret s, String key, String exceptionMessage) throws CredentialsConversionException {
+    public static String getNonNullSecretData(V1Secret s, String key, String exceptionMessage) throws CredentialsConversionException {
         String mappedKey = getKeyName(s, key);
-        if (mappedKey == key) { // use String == as getKeyName(key) will return key if no custom mapping is defined) 
-            return requireNonNull(s.getData().get(key), exceptionMessage, null);
+        if (mappedKey == key) { // use String == as getKeyName(key) will return key if no custom mapping is defined)
+            String data = s.getData().get(key) == null ? null : new String(s.getData().get(key));
+            return requireNonNull(data, exceptionMessage, null);
         }
-        return requireNonNull(s.getData().get(mappedKey), exceptionMessage, mappedKey);
+        String data = s.getData().get(mappedKey) == null ? null : new String(s.getData().get(mappedKey));
+        return requireNonNull(data, exceptionMessage, mappedKey);
     }
 
     /**
@@ -189,7 +191,7 @@ public abstract class SecretUtils {
      * @return Optional data for specified key
      * @throws CredentialsConversionException if the data was not present.
      */
-    public static Optional<String> getOptionalSecretData(Secret s, String key, String exceptionMessage) throws CredentialsConversionException {
+    public static Optional<String> getOptionalSecretData(V1Secret s, String key, String exceptionMessage) throws CredentialsConversionException {
         String mappedKey = getKeyName(s, key);
         if (s.getData().containsKey(key) || s.getData().containsKey(mappedKey)) {
             return Optional.of(getNonNullSecretData(s, key, exceptionMessage));
@@ -206,7 +208,7 @@ public abstract class SecretUtils {
      * @param key the name of the key we are looking for.
      * @return the custom mapping for the key or {@code key} (identical object) if there is no custom mapping.
      */
-    public static String getKeyName(Secret s, String key) {
+    public static String getKeyName(V1Secret s, String key) {
         Map<String, String> annotations = s.getMetadata().getAnnotations();
         if (annotations != null){
             final String annotationName = JENKINS_IO_CREDENTIALS_KEYBINDING_ANNOTATION_PREFIX + key;

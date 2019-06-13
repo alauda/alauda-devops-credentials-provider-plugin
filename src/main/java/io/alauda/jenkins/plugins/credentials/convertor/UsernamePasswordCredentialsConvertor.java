@@ -27,7 +27,7 @@ import com.cloudbees.plugins.credentials.CredentialsScope;
 import com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl;
 import hudson.Extension;
 import io.alauda.jenkins.plugins.credentials.SecretUtils;
-import io.alauda.kubernetes.api.model.Secret;
+import io.kubernetes.client.models.V1Secret;
 
 /**
  * SecretToCredentialConvertor that converts {@link UsernamePasswordCredentialsImpl}.
@@ -41,16 +41,11 @@ public class UsernamePasswordCredentialsConvertor extends SecretToCredentialConv
     }
 
     @Override
-    public UsernamePasswordCredentialsImpl convert(Secret secret) throws CredentialsConversionException {
+    public UsernamePasswordCredentialsImpl convert(V1Secret secret) throws CredentialsConversionException {
         SecretUtils.requireNonNull(secret.getData(), "kubernetes.io/basic-auth definition contains no data");
 
-        String usernameBase64 = SecretUtils.getNonNullSecretData(secret, "username", "kubernetes.io/basic-auth credential is missing the username");
-
-        String passwordBase64 = SecretUtils.getNonNullSecretData(secret, "password", "kubernetes.io/basic-auth credential is missing the password");
-
-        String username = SecretUtils.requireNonNull(SecretUtils.base64DecodeToString(usernameBase64), "kubernetes.io/basic-auth credential has an invalid username (must be base64 encoded UTF-8)");
-
-        String password = SecretUtils.requireNonNull(SecretUtils.base64DecodeToString(passwordBase64), "kubernetes.io/basic-auth credential has an invalid password (must be base64 encoded UTF-8)");
+        String username = SecretUtils.getNonNullSecretData(secret, "username", "kubernetes.io/basic-auth credential is missing the username");
+        String password = SecretUtils.getNonNullSecretData(secret, "password", "kubernetes.io/basic-auth credential is missing the password");
 
         return new UsernamePasswordCredentialsImpl(CredentialsScope.GLOBAL, SecretUtils.getCredentialId(secret), SecretUtils.getCredentialDescription(secret), username, password);
 
