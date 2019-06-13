@@ -8,6 +8,8 @@ import io.alauda.jenkins.plugins.credentials.metadata.NamespaceProvider;
 import jenkins.model.Jenkins;
 import org.apache.commons.lang.StringUtils;
 
+import java.util.Arrays;
+
 @Extension
 public class JenkinsRootScope implements KubernetesSecretScope {
     @Override
@@ -26,7 +28,11 @@ public class JenkinsRootScope implements KubernetesSecretScope {
             return false;
         }
 
-        return namespace.equals(KubernetesCredentialsProviderConfiguration.get().getGlobalNamespace());
+        String globalNamespaces = KubernetesCredentialsProviderConfiguration.get().getGlobalNamespaces();
+        if (globalNamespaces == null) {
+            return false;
+        }
 
+        return Arrays.asList(globalNamespaces.split(",")).contains(namespace);
     }
 }

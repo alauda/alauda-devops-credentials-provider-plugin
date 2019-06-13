@@ -11,7 +11,7 @@ import javax.annotation.Nonnull;
 @Extension
 public class KubernetesCredentialsProviderConfiguration extends GlobalConfiguration {
 
-    private String globalNamespace = "global-credentials";
+    private String globalNamespaces = "global-credentials";
     private String labelSelector;
 
     public static KubernetesCredentialsProviderConfiguration get() {
@@ -30,13 +30,13 @@ public class KubernetesCredentialsProviderConfiguration extends GlobalConfigurat
         return true;
     }
 
-    public String getGlobalNamespace() {
-        return globalNamespace;
+    public String getGlobalNamespaces() {
+        return globalNamespaces;
     }
 
     @DataBoundSetter
-    public void setGlobalNamespace(String globalNamespace) {
-        this.globalNamespace = globalNamespace;
+    public void setGlobalNamespaces(String globalNamespaces) {
+        this.globalNamespaces = globalNamespaces;
     }
 
     public String getLabelSelector() {
