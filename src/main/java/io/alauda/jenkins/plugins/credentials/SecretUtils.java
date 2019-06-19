@@ -27,6 +27,7 @@ import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.Nullable;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.alauda.jenkins.plugins.credentials.convertor.CredentialsConversionException;
+import io.kubernetes.client.models.V1ObjectMeta;
 import io.kubernetes.client.models.V1Secret;
 import org.kohsuke.accmod.Restricted;
 import org.kohsuke.accmod.restrictions.NoExternalUse;
@@ -106,7 +107,12 @@ public abstract class SecretUtils {
      */
     public static String getCredentialId(V1Secret s) {
         // we must have a metadata as the label that identifies this as a Jenkins credential needs to be present
-        return s.getMetadata().getNamespace() + "-" + s.getMetadata().getName();
+        return getCredentialId(s.getMetadata());
+    }
+
+    public static String getCredentialId(V1ObjectMeta meta) {
+        // we must have a metadata as the label that identifies this as a Jenkins credential needs to be present
+        return meta.getNamespace() + "-" + meta.getName();
     }
 
     /**
@@ -116,8 +122,12 @@ public abstract class SecretUtils {
      */
     @CheckForNull
     public static String getCredentialDescription(V1Secret s) {
+        return getCredentialDescription(s.getMetadata());
+    }
+
+    public static String getCredentialDescription(V1ObjectMeta meta) {
         // we must have a metadata as the label that identifies this as a Jenkins credential needs to be present
-        Map<String, String> annotations = s.getMetadata().getAnnotations();
+        Map<String, String> annotations = meta.getAnnotations();
         if (annotations != null) {
             return annotations.get(JENKINS_IO_CREDENTIALS_DESCRIPTION_ANNOTATION);
         }
