@@ -28,7 +28,7 @@ public class OpaqueCredentialsConverter extends SecretToCredentialConverter {
         Optional<String> tokenOpt = SecretUtils.getOptionalSecretData(secret, "token", "");
         if(tokenOpt.isPresent()) {
             String token = tokenOpt.get();
-            return CredentialsUtils.convert(secret.getMetadata(), token);
+            return CredentialsUtils.convertToStringCredentials(secret.getMetadata(), token);
         }
 
         return null;

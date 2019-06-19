@@ -21,6 +21,6 @@ public class ServiceAccountTokenCredentialsConverter extends SecretToCredentialC
         SecretUtils.requireNonNull(secret.getData(), "kubernetes.io/service-account-token definition contains no data");
         String token = SecretUtils.getNonNullSecretData(secret, "token", "kubernetes.io/service-account-token credential is missing the token");
 
-        return CredentialsUtils.convert(secret.getMetadata(), token);
+        return CredentialsUtils.convertToStringCredentials(secret.getMetadata(), token);
     }
 }
