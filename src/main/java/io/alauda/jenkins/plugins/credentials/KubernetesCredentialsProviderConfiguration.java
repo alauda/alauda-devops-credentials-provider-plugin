@@ -8,7 +8,7 @@ import org.kohsuke.stapler.StaplerRequest;
 
 import javax.annotation.Nonnull;
 
-@Extension
+@Extension(ordinal = 202)
 public class KubernetesCredentialsProviderConfiguration extends GlobalConfiguration {
 
     private String globalNamespaces = "global-credentials";
