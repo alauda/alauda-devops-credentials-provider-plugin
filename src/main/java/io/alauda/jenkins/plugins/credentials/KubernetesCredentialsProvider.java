@@ -124,7 +124,8 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
 
     @Override
     public Type getType() {
-        return new TypeToken<V1Secret>(){}.getType();
+        return new TypeToken<V1Secret>() {
+        }.getType();
     }
 
 
@@ -133,14 +134,37 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
     public <C extends Credentials> List<C> getCredentials(@Nonnull Class<C> type, final ItemGroup itemGroup, Authentication authentication) {
         LOG.log(Level.FINEST, "getCredentials called with type {0} and authentication {1}", new Object[]{type.getName(), authentication});
         if (ACL.SYSTEM.equals(authentication)) {
+            List<C> credentialsWithinScopes = getCredentialsWithinScope(type, itemGroup, authentication);
+
+            List<KubernetesSecretScope> scopes = KubernetesSecretScope.matchedScopes(itemGroup);
+            if (scopes.stream().anyMatch(s -> s.getClass().equals(JenkinsRootScope.class))) {
+                return credentialsWithinScopes;
+            }
+
+
+            JenkinsRootScope rootScope = ExtensionList.lookup(JenkinsRootScope.class).get(0);
+            credentials.forEach((s, credentialsWithMetadata) -> {
+                if (rootScope.shouldShowInScope(Jenkins.getInstance(), credentialsWithMetadata)) {
+                    if (type.isAssignableFrom(credentialsWithMetadata.getCredentials().getClass())) {
+                        C c = type.cast(credentialsWithMetadata.getCredentials());
+                        if (!credentialsWithinScopes.contains(c)) {
+                            credentialsWithinScopes.add(c);
+                        }
+                    }
+                }
+            });
+            return credentialsWithinScopes;
+        }
+        return Collections.emptyList();
+    }
+
+    public <C extends Credentials> List<C> getCredentialsWithinScope(@Nonnull Class<C> type, final ItemGroup itemGroup, Authentication authentication) {
+        LOG.log(Level.FINEST, "getCredentials called with type {0} and authentication {1}", new Object[]{type.getName(), authentication});
+        if (ACL.SYSTEM.equals(authentication)) {
             List<C> list = new ArrayList<>();
             Set<String> ids = new HashSet<>();
 
             List<KubernetesSecretScope> scopes = KubernetesSecretScope.matchedScopes(itemGroup);
-
-            if(scopes.stream().noneMatch(s -> s.getClass().equals(JenkinsRootScope.class))) {
-                scopes.addAll(ExtensionList.lookup(JenkinsRootScope.class));
-            }
 
             credentials.forEach((id, credentialsWithMetadata) -> {
                 if (scopes.stream().anyMatch(scope -> scope.shouldShowInScope(itemGroup, credentialsWithMetadata))) {

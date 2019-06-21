@@ -125,3 +125,5 @@ Temporary Items
 out
 gen
 work
+
+scripts/env.sh

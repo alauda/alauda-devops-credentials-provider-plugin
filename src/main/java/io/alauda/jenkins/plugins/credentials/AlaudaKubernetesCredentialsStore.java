@@ -46,7 +46,7 @@ public class AlaudaKubernetesCredentialsStore extends CredentialsStore {
     @Override
     public List<Credentials> getCredentials(@Nonnull Domain domain) {
         if (Domain.global().equals(domain) && Jenkins.getInstance().hasPermission(CredentialsProvider.VIEW))
-            return provider.getCredentials(Credentials.class, owner, ACL.SYSTEM);
+            return provider.getCredentialsWithinScope(Credentials.class, owner, ACL.SYSTEM);
         return Collections.emptyList();
     }
 
