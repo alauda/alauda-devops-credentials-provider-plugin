@@ -114,7 +114,6 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
 
     @Override
     public void shutDown(Throwable throwable) {
-
     }
 
     @Override
@@ -230,5 +229,14 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
         return new AlaudaKubernetesCredentialsStore(this, owner);
     }
 
+    @Override
+    @Nonnull
+    public String getDisplayName() {
+        return "Alauda DevOps Credentials Provider";
+    }
 
+    @Override
+    public String getIconClassName() {
+        return "icon-credentials-alauda-store";
+    }
 }
