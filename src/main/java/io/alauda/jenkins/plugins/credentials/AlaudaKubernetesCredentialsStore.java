@@ -11,6 +11,9 @@ import hudson.security.ACL;
 import hudson.security.Permission;
 import jenkins.model.Jenkins;
 import org.acegisecurity.Authentication;
+import org.jenkins.ui.icon.Icon;
+import org.jenkins.ui.icon.IconSet;
+import org.jenkins.ui.icon.IconType;
 import org.kohsuke.stapler.export.ExportedBean;
 
 import javax.annotation.Nonnull;
@@ -81,6 +84,7 @@ public class AlaudaKubernetesCredentialsStore extends CredentialsStore {
 
         private AlaudaKubernetesCredentialsStoreAction(AlaudaKubernetesCredentialsStore store) {
             this.store = store;
+            addIcons();
         }
 
         @Override
@@ -93,5 +97,35 @@ public class AlaudaKubernetesCredentialsStore extends CredentialsStore {
         public String getDisplayName() {
             return "Alauda DevOps";
         }
+
+        private void addIcons() {
+            IconSet.icons.addIcon(new Icon("icon-credentials-alauda-store icon-sm",
+                    "alauda-devops-credentials-provider/images/16x16/alauda.png",
+                    Icon.ICON_SMALL_STYLE, IconType.PLUGIN));
+            IconSet.icons.addIcon(new Icon("icon-credentials-alauda-store icon-md",
+                    "alauda-devops-credentials-provider/images/24x24/alauda.png",
+                    Icon.ICON_MEDIUM_STYLE, IconType.PLUGIN));
+            IconSet.icons.addIcon(new Icon("icon-credentials-alauda-store icon-lg",
+                    "alauda-devops-credentials-provider/images/32x32/alauda.png",
+                    Icon.ICON_LARGE_STYLE, IconType.PLUGIN));
+            IconSet.icons.addIcon(new Icon("icon-credentials-alauda-store icon-xlg",
+                    "alauda-devops-credentials-provider/images/48x48/alauda.png",
+                    Icon.ICON_XLARGE_STYLE, IconType.PLUGIN));
+        }
+
+        @Override
+        public String getIconFileName() {
+            return isVisible()
+                    ? "/plugin/alauda-devops-credentials-provider/images/32x32/alauda.png"
+                    : null;
+        }
+
+        @Override
+        public String getIconClassName() {
+            return isVisible()
+                    ? "icon-credentials-alauda-store"
+                    : null;
+        }
+
     }
 }
