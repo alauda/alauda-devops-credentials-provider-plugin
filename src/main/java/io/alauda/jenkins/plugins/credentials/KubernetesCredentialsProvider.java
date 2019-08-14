@@ -4,13 +4,22 @@ import com.cloudbees.plugins.credentials.Credentials;
 import com.cloudbees.plugins.credentials.CredentialsProvider;
 import com.cloudbees.plugins.credentials.CredentialsStore;
 import com.cloudbees.plugins.credentials.common.IdCredentials;
-import com.google.gson.reflect.TypeToken;
 import hudson.Extension;
 import hudson.ExtensionList;
 import hudson.model.ItemGroup;
 import hudson.model.ModelObject;
 import hudson.security.ACL;
-import io.alauda.jenkins.devops.support.controller.Controller;
+import io.alauda.devops.java.client.extend.controller.Controller;
+import io.alauda.devops.java.client.extend.controller.ControllerManager;
+import io.alauda.devops.java.client.extend.controller.builder.ControllerBuilder;
+import io.alauda.devops.java.client.extend.controller.builder.ControllerManangerBuilder;
+import io.alauda.devops.java.client.extend.controller.reconciler.Reconciler;
+import io.alauda.devops.java.client.extend.controller.reconciler.Request;
+import io.alauda.devops.java.client.extend.controller.reconciler.Result;
+import io.alauda.devops.java.client.extend.workqueue.DefaultRateLimitingQueue;
+import io.alauda.devops.java.client.extend.workqueue.RateLimitingQueue;
+import io.alauda.jenkins.devops.support.KubernetesCluster;
+import io.alauda.jenkins.devops.support.KubernetesClusterConfigurationListener;
 import io.alauda.jenkins.plugins.credentials.convertor.CredentialsConversionException;
 import io.alauda.jenkins.plugins.credentials.convertor.SecretToCredentialConverter;
 import io.alauda.jenkins.plugins.credentials.metadata.CredentialsWithMetadata;
@@ -21,38 +30,48 @@ import io.alauda.jenkins.plugins.credentials.scope.KubernetesSecretScope;
 import io.kubernetes.client.ApiClient;
 import io.kubernetes.client.ApiException;
 import io.kubernetes.client.apis.CoreV1Api;
-import io.kubernetes.client.informer.ResourceEventHandler;
 import io.kubernetes.client.informer.SharedIndexInformer;
 import io.kubernetes.client.informer.SharedInformerFactory;
+import io.kubernetes.client.informer.cache.Lister;
+import io.kubernetes.client.models.V1ObjectMeta;
 import io.kubernetes.client.models.V1Secret;
 import io.kubernetes.client.models.V1SecretList;
 import jenkins.model.Jenkins;
 import org.acegisecurity.Authentication;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
-import java.lang.reflect.Type;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import java.util.concurrent.Executors;
 
 @Extension
-public class KubernetesCredentialsProvider extends CredentialsProvider implements Controller<V1Secret, V1SecretList> {
+public class KubernetesCredentialsProvider extends CredentialsProvider implements KubernetesClusterConfigurationListener {
 
-    private static final Logger LOG
-            = Logger.getLogger(AlaudaKubernetesCredentialsStore.class.getName());
-    private SharedIndexInformer<V1Secret> secretInformer;
+    private static final Logger logger = LoggerFactory.getLogger(KubernetesCredentialsProvider.class);
+    private static final String CONTROLLER_NAME = "SecretController";
 
     // Maps of credentials keyed by credentials ID
     private ConcurrentHashMap<String, CredentialsWithMetadata> credentials = new ConcurrentHashMap<>();
+    private ControllerManager controllerManager;
+
 
     @Override
-    public void initialize(ApiClient apiClient, SharedInformerFactory sharedInformerFactory) {
+    public void onConfigChange(KubernetesCluster cluster, ApiClient client) {
+        if (controllerManager != null) {
+            controllerManager.shutdown();
+        }
+
+        SharedInformerFactory factory = new SharedInformerFactory();
+        ControllerManangerBuilder manangerBuilder = ControllerBuilder
+                .controllerManagerBuilder(factory);
+
         String labelSelector = KubernetesCredentialsProviderConfiguration.get().getLabelSelector();
 
         CoreV1Api coreV1Api = new CoreV1Api();
 
-        secretInformer = sharedInformerFactory.sharedIndexInformerFor(
+        SharedIndexInformer<V1Secret> secretInformer = factory.sharedIndexInformerFor(
                 callGeneratorParams -> {
                     try {
                         return coreV1Api.listSecretForAllNamespacesCall(
@@ -72,66 +91,105 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
                     }
                 }, V1Secret.class, V1SecretList.class);
 
-        secretInformer.addEventHandler(new ResourceEventHandler<V1Secret>() {
-            @Override
-            public void onAdd(V1Secret secret) {
-                IdCredentials cred = convertSecret(secret);
-                if (cred != null) {
-                    LOG.log(Level.FINE, "Secret Added - {0}", cred.getId());
-                    CredentialsWithMetadata credWithMetadata = addMetadataToCredentials(secret, cred);
-                    credentials.put(cred.getId(), credWithMetadata);
+        RateLimitingQueue<Request> rateLimitingQueue = new DefaultRateLimitingQueue<>(Executors.newSingleThreadScheduledExecutor());
+
+        Controller controller = ControllerBuilder.defaultBuilder(factory).watch(
+                ControllerBuilder.controllerWatchBuilder(V1Secret.class)
+                        .withWorkQueueKeyFunc(secret ->
+                                new Request(secret.getMetadata().getNamespace(), secret.getMetadata().getName()))
+                        .withWorkQueue(rateLimitingQueue)
+                        .withOnAddFilter(secret -> {
+                            logger.debug("[{}] receives event: Add; Secret '{}/{}'",
+                                    CONTROLLER_NAME,
+                                    secret.getMetadata().getNamespace(), secret.getMetadata().getName());
+                            return true;
+                        })
+                        .withOnUpdateFilter((oldSecret, newSecret) -> {
+                            String namespace = oldSecret.getMetadata().getNamespace();
+                            String name = oldSecret.getMetadata().getName();
+
+                            logger.debug("[{}] receives event: Update; Secret '{}/{}'",
+                                    CONTROLLER_NAME,
+                                    namespace, name);
+
+                            return true;
+                        })
+                        .withOnDeleteFilter((secret, aBoolean) -> {
+                            logger.debug("[{}] receives event: Add; Secret '{}/{}'",
+                                    CONTROLLER_NAME,
+                                    secret.getMetadata().getNamespace(), secret.getMetadata().getName());
+                            return true;
+                        }).build())
+                .withReconciler(new SecretReconciler(new Lister<>(secretInformer.getIndexer())))
+                .withName(CONTROLLER_NAME)
+                .withWorkerCount(4)
+                .withWorkQueue(rateLimitingQueue)
+                .build();
+
+        controllerManager = manangerBuilder.addController(controller).build();
+        controllerManager.run();
+    }
+
+    @Override
+    public void onConfigError(KubernetesCluster cluster, Throwable reason) {
+        if (controllerManager != null) {
+            controllerManager.shutdown();
+            controllerManager = null;
+        }
+
+        if (reason != null) {
+            logger.error("Alauda DevOps Credentials Provider is stopped, reason {}", reason);
+        } else {
+            logger.error("Alauda DevOps Credentials Provider is stopped, reason is null, might be stopped by user");
+        }
+    }
+
+
+    class SecretReconciler implements Reconciler {
+
+        private Lister<V1Secret> secretLister;
+
+        public SecretReconciler(Lister<V1Secret> secretLister) {
+            this.secretLister = secretLister;
+        }
+
+        @Override
+        public Result reconcile(Request request) {
+            String namespace = request.getNamespace();
+            String name = request.getName();
+
+            V1Secret secret = secretLister.namespace(namespace).get(name);
+            if (secret == null) {
+                logger.debug("[{}] Unable to get Secret '{}/{}' from local list, will remove it", getControllerName(), namespace, name);
+                String credId = SecretUtils.getCredentialId(new V1ObjectMeta().namespace(namespace).name(name));
+                if (credentials.containsKey(credId)) {
+                    logger.debug("Secret Deleted - {}", credId);
+                    credentials.remove(credId);
                 }
+                return new Result(false);
             }
 
-            @Override
-            public void onUpdate(V1Secret oldSecret, V1Secret newSecret) {
-                IdCredentials cred = convertSecret(newSecret);
-                if (cred != null) {
-                    LOG.log(Level.FINE, "Secret Modified - {0}", cred.getId());
-                    CredentialsWithMetadata credWithMetadata = addMetadataToCredentials(newSecret, cred);
-                    credentials.put(cred.getId(), credWithMetadata);
-                }
+            IdCredentials cred = convertSecret(secret);
+            if (cred != null) {
+                logger.debug("Secret Added - {0}", cred.getId());
+                CredentialsWithMetadata credWithMetadata = addMetadataToCredentials(secret, cred);
+                credentials.put(cred.getId(), credWithMetadata);
+                return new Result(false);
             }
 
-            @Override
-            public void onDelete(V1Secret secret, boolean deletedFinalStateUnknown) {
-                IdCredentials cred = convertSecret(secret);
+            return new Result(false);
+        }
 
-                if (cred != null) {
-                    if (credentials.containsKey(cred.getId())) {
-
-                        LOG.log(Level.FINE, "Secret Deleted - {0}", cred.getId());
-                        credentials.remove(cred.getId());
-                    }
-                }
-            }
-        });
-    }
-
-    @Override
-    public void start() {
-    }
-
-    @Override
-    public void shutDown(Throwable throwable) {
-    }
-
-    @Override
-    public boolean hasSynced() {
-        return secretInformer.hasSynced();
-    }
-
-    @Override
-    public Type getType() {
-        return new TypeToken<V1Secret>() {
-        }.getType();
+        public String getControllerName() {
+            return CONTROLLER_NAME;
+        }
     }
 
 
     @Nonnull
     @Override
     public <C extends Credentials> List<C> getCredentials(@Nonnull Class<C> type, final ItemGroup itemGroup, Authentication authentication) {
-        LOG.log(Level.FINEST, "getCredentials called with type {0} and authentication {1}", new Object[]{type.getName(), authentication});
+        logger.debug("getCredentials called with type {0} and authentication {1}", type.getName(), authentication);
         if (ACL.SYSTEM.equals(authentication)) {
             List<C> credentialsWithinScopes = getCredentialsWithinScope(type, itemGroup, authentication);
 
@@ -158,7 +216,7 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
     }
 
     public <C extends Credentials> List<C> getCredentialsWithinScope(@Nonnull Class<C> type, final ItemGroup itemGroup, Authentication authentication) {
-        LOG.log(Level.FINEST, "getCredentials called with type {0} and authentication {1}", new Object[]{type.getName(), authentication});
+        logger.debug("getCredentials called with type {} and authentication {}", type.getName(), authentication);
         if (ACL.SYSTEM.equals(authentication)) {
             List<C> list = new ArrayList<>();
             Set<String> ids = new HashSet<>();
@@ -200,11 +258,7 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
                 return lookup.convert(s);
             } catch (CredentialsConversionException ex) {
                 // do not spam the logs with the stacktrace...
-                if (LOG.isLoggable(Level.FINE)) {
-                    LOG.log(Level.FINE, "Failed to convert Secret '" + SecretUtils.getCredentialId(s) + "' of type " + type, ex);
-                } else {
-                    LOG.log(Level.WARNING, "Failed to convert Secret ''{0}'' of type {1} due to {2}", new Object[]{SecretUtils.getCredentialId(s), type, ex.getMessage()});
-                }
+                logger.debug("Failed to convert Secret '" + SecretUtils.getCredentialId(s) + "' of type " + type, ex);
                 return null;
             }
         }
@@ -239,4 +293,5 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
     public String getIconClassName() {
         return "icon-credentials-alauda-store";
     }
+
 }

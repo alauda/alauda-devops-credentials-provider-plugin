@@ -72,5 +72,10 @@
             <artifactId>alauda-kubernetes-support</artifactId>
             <version>2.0.0</version>
         </dependency>
+        <dependency>
+            <groupId>io.alauda</groupId>
+            <artifactId>devops-client-java</artifactId>
+            <version>1.0.1-SNAPSHOT</version>
+        </dependency>
     </dependencies>
 </project>
