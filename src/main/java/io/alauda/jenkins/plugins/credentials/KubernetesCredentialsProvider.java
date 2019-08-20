@@ -171,7 +171,7 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
 
             IdCredentials cred = convertSecret(secret);
             if (cred != null) {
-                logger.debug("Secret Added - {0}", cred.getId());
+                logger.debug("Secret Added - {}", cred.getId());
                 CredentialsWithMetadata credWithMetadata = addMetadataToCredentials(secret, cred);
                 credentials.put(cred.getId(), credWithMetadata);
                 return new Result(false);
@@ -189,7 +189,7 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
     @Nonnull
     @Override
     public <C extends Credentials> List<C> getCredentials(@Nonnull Class<C> type, final ItemGroup itemGroup, Authentication authentication) {
-        logger.debug("getCredentials called with type {0} and authentication {1}", type.getName(), authentication);
+        logger.debug("getCredentials called with type {} and authentication {}", type.getName(), authentication);
         if (ACL.SYSTEM.equals(authentication)) {
             List<C> credentialsWithinScopes = getCredentialsWithinScope(type, itemGroup, authentication);
 
