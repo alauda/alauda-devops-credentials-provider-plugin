@@ -33,6 +33,8 @@ import io.kubernetes.client.apis.CoreV1Api;
 import io.kubernetes.client.informer.SharedIndexInformer;
 import io.kubernetes.client.informer.SharedInformerFactory;
 import io.kubernetes.client.informer.cache.Lister;
+import io.kubernetes.client.informer.cache.ProcessorListener;
+import io.kubernetes.client.informer.cache.SharedProcessor;
 import io.kubernetes.client.models.V1ObjectMeta;
 import io.kubernetes.client.models.V1Secret;
 import io.kubernetes.client.models.V1SecretList;
@@ -42,9 +44,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
+import java.lang.reflect.Field;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
 
 @Extension
 public class KubernetesCredentialsProvider extends CredentialsProvider implements KubernetesClusterConfigurationListener {
@@ -55,13 +60,12 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
     // Maps of credentials keyed by credentials ID
     private ConcurrentHashMap<String, CredentialsWithMetadata> credentials = new ConcurrentHashMap<>();
     private ControllerManager controllerManager;
+    private ExecutorService controllerManagerThread;
 
 
     @Override
     public void onConfigChange(KubernetesCluster cluster, ApiClient client) {
-        if (controllerManager != null) {
-            controllerManager.shutdown();
-        }
+        shutDown(null);
 
         SharedInformerFactory factory = new SharedInformerFactory();
         ControllerManangerBuilder manangerBuilder = ControllerBuilder
@@ -126,15 +130,27 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
                 .withWorkQueue(rateLimitingQueue)
                 .build();
 
+        increaseInformerCapacity(secretInformer);
+
         controllerManager = manangerBuilder.addController(controller).build();
-        controllerManager.run();
+
+        controllerManagerThread = Executors.newSingleThreadExecutor();
+        controllerManagerThread.submit(() -> controllerManager.run());
     }
 
     @Override
     public void onConfigError(KubernetesCluster cluster, Throwable reason) {
+        shutDown(reason);
+    }
+
+    private void shutDown(Throwable reason) {
         if (controllerManager != null) {
             controllerManager.shutdown();
             controllerManager = null;
+        }
+
+        if (controllerManagerThread != null && !controllerManagerThread.isShutdown()) {
+            controllerManagerThread.shutdown();
         }
 
         if (reason != null) {
@@ -294,4 +310,23 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
         return "icon-credentials-alauda-store";
     }
 
+
+    private <ApiType> void increaseInformerCapacity(SharedIndexInformer<ApiType> sharedIndexInformer) {
+        try {
+            Field sharedProcessorField = sharedIndexInformer.getClass().getDeclaredField("processor");
+            sharedProcessorField.setAccessible(true);
+            SharedProcessor<ApiType> processor = (SharedProcessor<ApiType>) sharedProcessorField.get(sharedIndexInformer);
+
+            Field listenersField = processor.getClass().getDeclaredField("listeners");
+            listenersField.setAccessible(true);
+            List<ProcessorListener<ApiType>> processorListeners = (List<ProcessorListener<ApiType>>) listenersField.get(processor);
+            for (ProcessorListener<ApiType> processorListener : processorListeners) {
+                Field queueField = processorListener.getClass().getDeclaredField("queue");
+                queueField.setAccessible(true);
+                queueField.set(processorListener, new LinkedBlockingQueue<ProcessorListener.Notification>());
+            }
+        } catch (Throwable throwable) {
+            throwable.printStackTrace();
+        }
+    }
 }
