@@ -9,15 +9,6 @@ import hudson.ExtensionList;
 import hudson.model.ItemGroup;
 import hudson.model.ModelObject;
 import hudson.security.ACL;
-import io.alauda.devops.java.client.extend.controller.Controller;
-import io.alauda.devops.java.client.extend.controller.ControllerManager;
-import io.alauda.devops.java.client.extend.controller.builder.ControllerBuilder;
-import io.alauda.devops.java.client.extend.controller.builder.ControllerManangerBuilder;
-import io.alauda.devops.java.client.extend.controller.reconciler.Reconciler;
-import io.alauda.devops.java.client.extend.controller.reconciler.Request;
-import io.alauda.devops.java.client.extend.controller.reconciler.Result;
-import io.alauda.devops.java.client.extend.workqueue.DefaultRateLimitingQueue;
-import io.alauda.devops.java.client.extend.workqueue.RateLimitingQueue;
 import io.alauda.jenkins.devops.support.KubernetesCluster;
 import io.alauda.jenkins.devops.support.KubernetesClusterConfigurationListener;
 import io.alauda.jenkins.plugins.credentials.convertor.CredentialsConversionException;
@@ -30,6 +21,13 @@ import io.alauda.jenkins.plugins.credentials.scope.KubernetesSecretScope;
 import io.kubernetes.client.ApiClient;
 import io.kubernetes.client.ApiException;
 import io.kubernetes.client.apis.CoreV1Api;
+import io.kubernetes.client.extended.controller.Controller;
+import io.kubernetes.client.extended.controller.ControllerManager;
+import io.kubernetes.client.extended.controller.builder.ControllerBuilder;
+import io.kubernetes.client.extended.controller.builder.ControllerManagerBuilder;
+import io.kubernetes.client.extended.controller.reconciler.Reconciler;
+import io.kubernetes.client.extended.controller.reconciler.Request;
+import io.kubernetes.client.extended.controller.reconciler.Result;
 import io.kubernetes.client.informer.SharedIndexInformer;
 import io.kubernetes.client.informer.SharedInformerFactory;
 import io.kubernetes.client.informer.cache.Lister;
@@ -68,7 +66,7 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
         shutDown(null);
 
         SharedInformerFactory factory = new SharedInformerFactory();
-        ControllerManangerBuilder manangerBuilder = ControllerBuilder
+        ControllerManagerBuilder manangerBuilder = ControllerBuilder
                 .controllerManagerBuilder(factory);
 
         String labelSelector = KubernetesCredentialsProviderConfiguration.get().getLabelSelector();
@@ -79,7 +77,6 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
                 callGeneratorParams -> {
                     try {
                         return coreV1Api.listSecretForAllNamespacesCall(
-                                null,
                                 null,
                                 null,
                                 labelSelector,
@@ -95,13 +92,12 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
                     }
                 }, V1Secret.class, V1SecretList.class);
 
-        RateLimitingQueue<Request> rateLimitingQueue = new DefaultRateLimitingQueue<>(Executors.newSingleThreadScheduledExecutor());
 
         Controller controller = ControllerBuilder.defaultBuilder(factory).watch(
-                ControllerBuilder.controllerWatchBuilder(V1Secret.class)
+                (workQueue) ->
+                ControllerBuilder.controllerWatchBuilder(V1Secret.class, workQueue)
                         .withWorkQueueKeyFunc(secret ->
                                 new Request(secret.getMetadata().getNamespace(), secret.getMetadata().getName()))
-                        .withWorkQueue(rateLimitingQueue)
                         .withOnAddFilter(secret -> {
                             logger.debug("[{}] receives event: Add; Secret '{}/{}'",
                                     CONTROLLER_NAME,
@@ -127,7 +123,6 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
                 .withReconciler(new SecretReconciler(new Lister<>(secretInformer.getIndexer())))
                 .withName(CONTROLLER_NAME)
                 .withWorkerCount(4)
-                .withWorkQueue(rateLimitingQueue)
                 .build();
 
         increaseInformerCapacity(secretInformer);
