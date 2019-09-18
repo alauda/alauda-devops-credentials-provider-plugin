@@ -95,31 +95,31 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
 
         Controller controller = ControllerBuilder.defaultBuilder(factory).watch(
                 (workQueue) ->
-                ControllerBuilder.controllerWatchBuilder(V1Secret.class, workQueue)
-                        .withWorkQueueKeyFunc(secret ->
-                                new Request(secret.getMetadata().getNamespace(), secret.getMetadata().getName()))
-                        .withOnAddFilter(secret -> {
-                            logger.debug("[{}] receives event: Add; Secret '{}/{}'",
-                                    CONTROLLER_NAME,
-                                    secret.getMetadata().getNamespace(), secret.getMetadata().getName());
-                            return true;
-                        })
-                        .withOnUpdateFilter((oldSecret, newSecret) -> {
-                            String namespace = oldSecret.getMetadata().getNamespace();
-                            String name = oldSecret.getMetadata().getName();
+                        ControllerBuilder.controllerWatchBuilder(V1Secret.class, workQueue)
+                                .withWorkQueueKeyFunc(secret ->
+                                        new Request(secret.getMetadata().getNamespace(), secret.getMetadata().getName()))
+                                .withOnAddFilter(secret -> {
+                                    logger.debug("[{}] receives event: Add; Secret '{}/{}'",
+                                            CONTROLLER_NAME,
+                                            secret.getMetadata().getNamespace(), secret.getMetadata().getName());
+                                    return true;
+                                })
+                                .withOnUpdateFilter((oldSecret, newSecret) -> {
+                                    String namespace = oldSecret.getMetadata().getNamespace();
+                                    String name = oldSecret.getMetadata().getName();
 
-                            logger.debug("[{}] receives event: Update; Secret '{}/{}'",
-                                    CONTROLLER_NAME,
-                                    namespace, name);
+                                    logger.debug("[{}] receives event: Update; Secret '{}/{}'",
+                                            CONTROLLER_NAME,
+                                            namespace, name);
 
-                            return true;
-                        })
-                        .withOnDeleteFilter((secret, aBoolean) -> {
-                            logger.debug("[{}] receives event: Add; Secret '{}/{}'",
-                                    CONTROLLER_NAME,
-                                    secret.getMetadata().getNamespace(), secret.getMetadata().getName());
-                            return true;
-                        }).build())
+                                    return true;
+                                })
+                                .withOnDeleteFilter((secret, aBoolean) -> {
+                                    logger.debug("[{}] receives event: Add; Secret '{}/{}'",
+                                            CONTROLLER_NAME,
+                                            secret.getMetadata().getNamespace(), secret.getMetadata().getName());
+                                    return true;
+                                }).build())
                 .withReconciler(new SecretReconciler(new Lister<>(secretInformer.getIndexer())))
                 .withName(CONTROLLER_NAME)
                 .withWorkerCount(4)
