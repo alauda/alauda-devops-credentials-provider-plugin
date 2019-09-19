@@ -25,11 +25,6 @@ pipeline {
 		disableConcurrentBuilds()
 	}
 
-	parameters {
-	    booleanParam defaultValue: false, description: 'Rebuild and archive artifacts if this flag is true.', name: 'forceReBuild'
-	    booleanParam defaultValue: false, description: 'Force execute sonar scan if this flag is true.', name: 'forceSonarScan'
-    }
-
 	//(optional) 环境变量
 	environment {
 		// for building an scanning
@@ -82,18 +77,6 @@ pipeline {
 			}
 		}
         stage('Build') {
-            when {
-                anyOf {
-                    changeset '**/**/*.java'
-                    changeset '**/**/*.xml'
-                    changeset '**/**/*.jelly'
-                    changeset '**/**/*.properties'
-                    changeset '**/**/*.png'
-                    expression {
-                        return params.forceReBuild
-                    }
-                }
-            }
             steps {
                 script {
                     container('java'){
@@ -108,14 +91,6 @@ pipeline {
         }
 		// sonar scan
 		stage('Sonar') {
-		    when {
-                anyOf {
-                    changeset '**/**/*.java'
-                    expression {
-                        return params.forceSonarScan
-                    }
-                }
-		    }
 			steps {
 				script {
 					container('tools') {
