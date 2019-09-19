@@ -60,6 +60,7 @@ public abstract class SecretUtils {
     
     public static final String JENKINS_IO_CREDENTIALS_TYPE_LABEL = "jenkins.io/credentials-type";
 
+    private SecretUtils() {}
 
     /**
      * Convert a String representation of the base64 encoded bytes of a UTF-8 String back to a String. 
@@ -183,7 +184,7 @@ public abstract class SecretUtils {
     @SuppressFBWarnings(value= {"ES_COMPARING_PARAMETER_STRING_WITH_EQ"}, justification="the string will be the same string if not mapped")
     public static String getNonNullSecretData(V1Secret s, String key, String exceptionMessage) throws CredentialsConversionException {
         String mappedKey = getKeyName(s, key);
-        if (mappedKey == key) { // use String == as getKeyName(key) will return key if no custom mapping is defined)
+        if (mappedKey.equals(key)) { // use String == as getKeyName(key) will return key if no custom mapping is defined)
             String data = s.getData().get(key) == null ? null : new String(s.getData().get(key), StandardCharsets.UTF_8);
             return requireNonNull(data, exceptionMessage, null);
         }

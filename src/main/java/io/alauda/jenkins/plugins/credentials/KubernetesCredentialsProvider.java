@@ -74,23 +74,17 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
         CoreV1Api coreV1Api = new CoreV1Api();
 
         SharedIndexInformer<V1Secret> secretInformer = factory.sharedIndexInformerFor(
-                callGeneratorParams -> {
-                    try {
-                        return coreV1Api.listSecretForAllNamespacesCall(
-                                null,
-                                null,
-                                labelSelector,
-                                null,
-                                null,
-                                callGeneratorParams.resourceVersion,
-                                callGeneratorParams.timeoutSeconds,
-                                callGeneratorParams.watch,
-                                null,
-                                null);
-                    } catch (ApiException e) {
-                        throw new RuntimeException(e);
-                    }
-                }, V1Secret.class, V1SecretList.class);
+                callGeneratorParams -> coreV1Api.listSecretForAllNamespacesCall(
+                        null,
+                        null,
+                        labelSelector,
+                        null,
+                        null,
+                        callGeneratorParams.resourceVersion,
+                        callGeneratorParams.timeoutSeconds,
+                        callGeneratorParams.watch,
+                        null,
+                        null), V1Secret.class, V1SecretList.class);
 
 
         Controller controller = ControllerBuilder.defaultBuilder(factory).watch(
@@ -124,8 +118,6 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
                 .withName(CONTROLLER_NAME)
                 .withWorkerCount(4)
                 .build();
-
-        increaseInformerCapacity(secretInformer);
 
         controllerManager = manangerBuilder.addController(controller).build();
 
@@ -212,14 +204,14 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
 
             JenkinsRootScope rootScope = ExtensionList.lookup(JenkinsRootScope.class).get(0);
             credentials.forEach((s, credentialsWithMetadata) -> {
-                if (rootScope.shouldShowInScope(Jenkins.getInstance(), credentialsWithMetadata)) {
-                    if (type.isAssignableFrom(credentialsWithMetadata.getCredentials().getClass())) {
-                        C c = type.cast(credentialsWithMetadata.getCredentials());
-                        if (!credentialsWithinScopes.contains(c)) {
-                            credentialsWithinScopes.add(c);
-                        }
+                if (rootScope.shouldShowInScope(Jenkins.getInstance(), credentialsWithMetadata)
+                        && type.isAssignableFrom(credentialsWithMetadata.getCredentials().getClass())) {
+                    C c = type.cast(credentialsWithMetadata.getCredentials());
+                    if (!credentialsWithinScopes.contains(c)) {
+                        credentialsWithinScopes.add(c);
                     }
                 }
+
             });
             return credentialsWithinScopes;
         }
@@ -235,10 +227,9 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
             List<KubernetesSecretScope> scopes = KubernetesSecretScope.matchedScopes(itemGroup);
 
             credentials.forEach((id, credentialsWithMetadata) -> {
-                if (scopes.stream().anyMatch(scope -> scope.shouldShowInScope(itemGroup, credentialsWithMetadata))) {
-                    if (type.isAssignableFrom(credentialsWithMetadata.getCredentials().getClass()) && ids.add(id)) {
-                        list.add(type.cast(credentialsWithMetadata.getCredentials()));
-                    }
+                if (scopes.stream().anyMatch(scope -> scope.shouldShowInScope(itemGroup, credentialsWithMetadata))
+                        && type.isAssignableFrom(credentialsWithMetadata.getCredentials().getClass()) && ids.add(id)) {
+                    list.add(type.cast(credentialsWithMetadata.getCredentials()));
                 }
             });
 
@@ -303,25 +294,5 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
     @Override
     public String getIconClassName() {
         return "icon-credentials-alauda-store";
-    }
-
-
-    private <ApiType> void increaseInformerCapacity(SharedIndexInformer<ApiType> sharedIndexInformer) {
-        try {
-            Field sharedProcessorField = sharedIndexInformer.getClass().getDeclaredField("processor");
-            sharedProcessorField.setAccessible(true);
-            SharedProcessor<ApiType> processor = (SharedProcessor<ApiType>) sharedProcessorField.get(sharedIndexInformer);
-
-            Field listenersField = processor.getClass().getDeclaredField("listeners");
-            listenersField.setAccessible(true);
-            List<ProcessorListener<ApiType>> processorListeners = (List<ProcessorListener<ApiType>>) listenersField.get(processor);
-            for (ProcessorListener<ApiType> processorListener : processorListeners) {
-                Field queueField = processorListener.getClass().getDeclaredField("queue");
-                queueField.setAccessible(true);
-                queueField.set(processorListener, new LinkedBlockingQueue<ProcessorListener.Notification>());
-            }
-        } catch (Throwable throwable) {
-            throwable.printStackTrace();
-        }
     }
 }
