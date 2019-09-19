@@ -6,7 +6,7 @@ import io.kubernetes.client.models.V1ObjectMeta;
 import org.jenkinsci.plugins.plaincredentials.StringCredentials;
 import org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl;
 
-public abstract class CredentialsUtils {
+public final class CredentialsUtils {
 
     private CredentialsUtils() {}
 

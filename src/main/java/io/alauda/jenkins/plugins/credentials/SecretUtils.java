@@ -48,7 +48,7 @@ import java.util.logging.Logger;
  * Collection of utilities for working with {@link V1Secret}s.
  * <em>Note</em>: API may be subject to change.
  */
-public abstract class SecretUtils {
+public final class SecretUtils {
 
     private static final Logger LOG = Logger.getLogger(SecretUtils.class.getName());
 

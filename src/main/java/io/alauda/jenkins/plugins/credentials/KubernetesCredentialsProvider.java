@@ -19,7 +19,6 @@ import io.alauda.jenkins.plugins.credentials.rule.KubernetesSecretRule;
 import io.alauda.jenkins.plugins.credentials.scope.JenkinsRootScope;
 import io.alauda.jenkins.plugins.credentials.scope.KubernetesSecretScope;
 import io.kubernetes.client.ApiClient;
-import io.kubernetes.client.ApiException;
 import io.kubernetes.client.apis.CoreV1Api;
 import io.kubernetes.client.extended.controller.Controller;
 import io.kubernetes.client.extended.controller.ControllerManager;
@@ -31,8 +30,6 @@ import io.kubernetes.client.extended.controller.reconciler.Result;
 import io.kubernetes.client.informer.SharedIndexInformer;
 import io.kubernetes.client.informer.SharedInformerFactory;
 import io.kubernetes.client.informer.cache.Lister;
-import io.kubernetes.client.informer.cache.ProcessorListener;
-import io.kubernetes.client.informer.cache.SharedProcessor;
 import io.kubernetes.client.models.V1ObjectMeta;
 import io.kubernetes.client.models.V1Secret;
 import io.kubernetes.client.models.V1SecretList;
@@ -42,12 +39,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
-import java.lang.reflect.Field;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingQueue;
 
 @Extension
 public class KubernetesCredentialsProvider extends CredentialsProvider implements KubernetesClusterConfigurationListener {
