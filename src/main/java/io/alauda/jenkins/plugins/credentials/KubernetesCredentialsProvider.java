@@ -10,6 +10,7 @@ import hudson.model.ItemGroup;
 import hudson.model.ModelObject;
 import hudson.security.ACL;
 import io.alauda.jenkins.devops.support.KubernetesCluster;
+import io.alauda.jenkins.devops.support.KubernetesClusterConfiguration;
 import io.alauda.jenkins.devops.support.KubernetesClusterConfigurationListener;
 import io.alauda.jenkins.plugins.credentials.convertor.CredentialsConversionException;
 import io.alauda.jenkins.plugins.credentials.convertor.SecretToCredentialConverter;
@@ -19,6 +20,7 @@ import io.alauda.jenkins.plugins.credentials.rule.KubernetesSecretRule;
 import io.alauda.jenkins.plugins.credentials.scope.JenkinsRootScope;
 import io.alauda.jenkins.plugins.credentials.scope.KubernetesSecretScope;
 import io.kubernetes.client.ApiClient;
+import io.kubernetes.client.Configuration;
 import io.kubernetes.client.apis.CoreV1Api;
 import io.kubernetes.client.extended.controller.Controller;
 import io.kubernetes.client.extended.controller.ControllerManager;
@@ -39,6 +41,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -55,13 +58,14 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
     private ControllerManager controllerManager;
     private ExecutorService controllerManagerThread;
 
+    private LocalDateTime lastEventComingTime;
 
     @Override
     public void onConfigChange(KubernetesCluster cluster, ApiClient client) {
         shutDown(null);
 
         SharedInformerFactory factory = new SharedInformerFactory();
-        ControllerManagerBuilder manangerBuilder = ControllerBuilder
+        ControllerManagerBuilder managerBuilder = ControllerBuilder
                 .controllerManagerBuilder(factory);
 
         String labelSelector = KubernetesCredentialsProviderConfiguration.get().getLabelSelector();
@@ -101,10 +105,12 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
                                             CONTROLLER_NAME,
                                             namespace, name);
 
+                                    lastEventComingTime = LocalDateTime.now();
+
                                     return true;
                                 })
                                 .withOnDeleteFilter((secret, aBoolean) -> {
-                                    logger.debug("[{}] receives event: Add; Secret '{}/{}'",
+                                    logger.debug("[{}] receives event: Delete; Secret '{}/{}'",
                                             CONTROLLER_NAME,
                                             secret.getMetadata().getNamespace(), secret.getMetadata().getName());
                                     return true;
@@ -114,7 +120,7 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
                 .withWorkerCount(4)
                 .build();
 
-        controllerManager = manangerBuilder.addController(controller).build();
+        controllerManager = managerBuilder.addController(controller).build();
 
         controllerManagerThread = Executors.newSingleThreadExecutor();
         controllerManagerThread.submit(() -> controllerManager.run());
@@ -136,10 +142,14 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
         }
 
         if (reason != null) {
-            logger.error("Alauda DevOps Credentials Provider is stopped, reason {}", reason);
+            logger.error("Alauda DevOps Credentials Provider is stopped, reason {}", reason.getMessage());
         } else {
             logger.error("Alauda DevOps Credentials Provider is stopped, reason is null, might be stopped by user");
         }
+    }
+
+    public LocalDateTime getLastEventComingTime() {
+        return lastEventComingTime;
     }
 
 
@@ -289,5 +299,10 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
     @Override
     public String getIconClassName() {
         return "icon-credentials-alauda-store";
+    }
+
+    public void restart() {
+        KubernetesCluster cluster = KubernetesClusterConfiguration.get().getCluster();
+        this.onConfigChange(cluster, Configuration.getDefaultApiClient());
     }
 }
