@@ -4,6 +4,9 @@ import hudson.Extension;
 import hudson.ExtensionList;
 import hudson.model.AsyncPeriodicWork;
 import hudson.model.TaskListener;
+import io.kubernetes.client.ApiException;
+import io.kubernetes.client.apis.CoreV1Api;
+import io.kubernetes.client.models.V1SecretList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,7 +41,17 @@ public class SecretConnectionAliveDetectTask extends AsyncPeriodicWork {
         LocalDateTime lastEventComingTime = credentialsProviders.get(0).getLastEventComingTime();
         // controller might not be initialized, or no resource exist in k8s so that we cannot receive event
         if (lastEventComingTime == null) {
-            logger.debug("The KubernetesCredentialsProvider seems not start or no resource exists in k8s, will skip check for it");
+            try {
+                // if there has resource exists but we didn't receive any event, the watch connection might be broken
+                if (hasSecretExistsInK8s()) {
+                    int count = heartbeatLostCount.incrementAndGet();
+                    logger.warn("The watch connection of resource Secret seems broken, retry count {}",  count);
+                } else {
+                    logger.debug("There are no resource Secret exists in k8s, will skip this check for it");
+                }
+            } catch (ApiException e) {
+                logger.warn("Unable to check if resource Secret exists in k8s, will skip this check for it, reason: {}",  e.getMessage());
+            }
             return;
         }
 
@@ -63,5 +76,24 @@ public class SecretConnectionAliveDetectTask extends AsyncPeriodicWork {
     @Override
     public long getRecurrencePeriod() {
         return TimeUnit.MINUTES.toMillis(1);
+    }
+
+    public boolean hasSecretExistsInK8s() throws ApiException {
+        CoreV1Api api = new CoreV1Api();
+        V1SecretList secretList = api.listSecretForAllNamespaces(
+                null,
+                null,
+                null,
+                1,
+                null,
+                "0",
+                null,
+                null);
+
+        if (secretList == null || secretList.getItems() == null || secretList.getItems().size() == 0) {
+            return true;
+        }
+
+        return false;
     }
 }
