@@ -91,9 +91,9 @@ public class SecretConnectionAliveDetectTask extends AsyncPeriodicWork {
                 null);
 
         if (secretList == null || secretList.getItems() == null || secretList.getItems().size() == 0) {
-            return true;
+            return false;
         }
 
-        return false;
+        return true;
     }
 }
