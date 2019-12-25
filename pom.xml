@@ -1,65 +1,57 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" 
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <modelVersion>4.0.0</modelVersion>
   <parent>
     <groupId>org.jenkins-ci.plugins</groupId>
     <artifactId>plugin</artifactId>
     <version>3.4</version>
-    <relativePath />
+    <relativePath></relativePath>
   </parent>
   <groupId>io.alauda.jenkins.plugins</groupId>
   <artifactId>alauda-devops-credentials-provider</artifactId>
   <version>${revision}${sha1}${changelist}</version>
   <packaging>hpi</packaging>
-  <properties>
-    <revision>2.6</revision>
-    <changelist>-SNAPSHOT</changelist>
-    <sha1/>
-    <jenkins.version>2.83</jenkins.version>
-    <java.level>8</java.level>
-  </properties>
   <name>Alauda DevOps Credentials Provider Plugin</name>
   <description>This plugin will provide a credentials store backed by Kubernetes</description>
-
+  <url>https://wiki.jenkins.io/display/JENKINS/Alauda+DevOps+Credentials+Provider+Plugin</url>
   <licenses>
     <license>
       <name>MIT License</name>
       <url>https://opensource.org/licenses/MIT</url>
     </license>
   </licenses>
-
   <developers>
     <developer>
       <id>alaudaDevelopers</id>
       <name>Alauda Developers</name>
+      <email>devs@alauda.io</email>
       <organization>alauda</organization>
       <organizationUrl>http://alauda.io/</organizationUrl>
-      <email>devs@alauda.io</email>
     </developer>
   </developers>
-
-  <url>https://wiki.jenkins.io/display/JENKINS/Alauda+DevOps+Credentials+Provider+Plugin</url>
   <scm>
     <connection>scm:git:git://github.com/jenkinsci/${project.artifactId}-plugin.git</connection>
     <developerConnection>scm:git:git@github.com:jenkinsci/${project.artifactId}-plugin.git</developerConnection>
     <url>https://github.com/jenkinsci/${project.artifactId}-plugin</url>
-    <tag>HEAD</tag>
   </scm>
-
-  <repositories>
+  <distributionManagement>
     <repository>
-      <id>repo.jenkins-ci.org</id>
-      <url>https://repo.jenkins-ci.org/public/</url>
+      <id>${releases.id}</id>
+      <url>${releases.url}</url>
     </repository>
-  </repositories>
-  <pluginRepositories>
-    <pluginRepository>
-      <id>repo.jenkins-ci.org</id>
-      <url>https://repo.jenkins-ci.org/public/</url>
-    </pluginRepository>
-  </pluginRepositories>
-
+    <snapshotRepository>
+      <id>${snapshots.id}</id>
+      <url>${snapshots.url}</url>
+    </snapshotRepository>
+  </distributionManagement>
+  <properties>
+    <revision>2.7</revision>
+    <changelist>-SNAPSHOT</changelist>
+    <java.level>8</java.level>
+    <jenkins.version>2.83</jenkins.version>
+    <sha1></sha1>
+  </properties>
   <dependencies>
     <dependency>
       <groupId>org.jenkins-ci.plugins</groupId>
@@ -77,41 +69,42 @@
       <version>2.3.0</version>
     </dependency>
   </dependencies>
+  <repositories>
+    <repository>
+      <id>repo.jenkins-ci.org</id>
+      <url>https://repo.jenkins-ci.org/public/</url>
+    </repository>
+  </repositories>
+  <pluginRepositories>
+    <pluginRepository>
+      <id>repo.jenkins-ci.org</id>
+      <url>https://repo.jenkins-ci.org/public/</url>
+    </pluginRepository>
+  </pluginRepositories>
   <profiles>
     <profile>
       <id>incrementals</id>
       <properties>
+        <snapshots.url>https://nexus.acp.alauda.cn/repository/maven-snapshots/</snapshots.url>
         <releases.id>nexus.acp.alauda.cn</releases.id>
-        <releases.name>nexus.acp.alauda.cn</releases.name>
-        <releases.url>https://nexus.acp.alauda.cn/repository/maven-incrementals/</releases.url>
         <snapshots.id>nexus.acp.alauda.cn</snapshots.id>
         <snapshots.name>nexus.acp.alauda.cn</snapshots.name>
-        <snapshots.url>https://nexus.acp.alauda.cn/repository/maven-snapshots/</snapshots.url>
+        <releases.url>https://nexus.acp.alauda.cn/repository/maven-incrementals/</releases.url>
+        <releases.name>nexus.acp.alauda.cn</releases.name>
       </properties>
     </profile>
     <profile>
-      <id>default</id>
       <activation>
         <activeByDefault>true</activeByDefault>
       </activation>
       <properties>
+        <snapshots.url>https://nexus.acp.alauda.cn/repository/maven-snapshots/</snapshots.url>
         <releases.id>nexus.acp.alauda.cn</releases.id>
-        <releases.name>nexus.acp.alauda.cn</releases.name>
-        <releases.url>https://nexus.acp.alauda.cn/repository/maven-releases/</releases.url>
         <snapshots.id>nexus.acp.alauda.cn</snapshots.id>
         <snapshots.name>nexus.acp.alauda.cn</snapshots.name>
-        <snapshots.url>https://nexus.acp.alauda.cn/repository/maven-snapshots/</snapshots.url>
+        <releases.url>https://nexus.acp.alauda.cn/repository/maven-releases/</releases.url>
+        <releases.name>nexus.acp.alauda.cn</releases.name>
       </properties>
     </profile>
   </profiles>
-  <distributionManagement>
-    <repository>
-      <id>${releases.id}</id>
-      <url>${releases.url}</url>
-    </repository>
-    <snapshotRepository>
-      <id>${snapshots.id}</id>
-      <url>${snapshots.url}</url>
-    </snapshotRepository>
-  </distributionManagement>
 </project>
