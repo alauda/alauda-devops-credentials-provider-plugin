@@ -9,3 +9,9 @@ It provides four extension points for other plugins to implement to have more po
 2. MetadataProvider allows adding metadata to Credentials
 3. KubernetesSecretRule defines which secret should 
 4. KubernetesSecretScope defines where those secrets can be used
+
+### Configuration
+![Plugin Configuration](./images/plugin-configuration.png "Plugin Configuration")
+
+- Global Namespaces - secrets in these namespaces can be used globally
+- Label Selector - label selector to watch a group of secrets

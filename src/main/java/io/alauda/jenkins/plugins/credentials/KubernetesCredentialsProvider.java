@@ -10,6 +10,7 @@ import hudson.model.ItemGroup;
 import hudson.model.ModelObject;
 import hudson.security.ACL;
 import io.alauda.jenkins.devops.support.KubernetesCluster;
+import io.alauda.jenkins.devops.support.KubernetesClusterConfiguration;
 import io.alauda.jenkins.devops.support.KubernetesClusterConfigurationListener;
 import io.alauda.jenkins.plugins.credentials.convertor.CredentialsConversionException;
 import io.alauda.jenkins.plugins.credentials.convertor.SecretToCredentialConverter;
@@ -19,7 +20,7 @@ import io.alauda.jenkins.plugins.credentials.rule.KubernetesSecretRule;
 import io.alauda.jenkins.plugins.credentials.scope.JenkinsRootScope;
 import io.alauda.jenkins.plugins.credentials.scope.KubernetesSecretScope;
 import io.kubernetes.client.ApiClient;
-import io.kubernetes.client.ApiException;
+import io.kubernetes.client.Configuration;
 import io.kubernetes.client.apis.CoreV1Api;
 import io.kubernetes.client.extended.controller.Controller;
 import io.kubernetes.client.extended.controller.ControllerManager;
@@ -31,8 +32,6 @@ import io.kubernetes.client.extended.controller.reconciler.Result;
 import io.kubernetes.client.informer.SharedIndexInformer;
 import io.kubernetes.client.informer.SharedInformerFactory;
 import io.kubernetes.client.informer.cache.Lister;
-import io.kubernetes.client.informer.cache.ProcessorListener;
-import io.kubernetes.client.informer.cache.SharedProcessor;
 import io.kubernetes.client.models.V1ObjectMeta;
 import io.kubernetes.client.models.V1Secret;
 import io.kubernetes.client.models.V1SecretList;
@@ -42,12 +41,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
-import java.lang.reflect.Field;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingQueue;
 
 @Extension
 public class KubernetesCredentialsProvider extends CredentialsProvider implements KubernetesClusterConfigurationListener {
@@ -60,13 +58,14 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
     private ControllerManager controllerManager;
     private ExecutorService controllerManagerThread;
 
+    private LocalDateTime lastEventComingTime;
 
     @Override
     public void onConfigChange(KubernetesCluster cluster, ApiClient client) {
         shutDown(null);
 
         SharedInformerFactory factory = new SharedInformerFactory();
-        ControllerManagerBuilder manangerBuilder = ControllerBuilder
+        ControllerManagerBuilder managerBuilder = ControllerBuilder
                 .controllerManagerBuilder(factory);
 
         String labelSelector = KubernetesCredentialsProviderConfiguration.get().getLabelSelector();
@@ -74,60 +73,54 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
         CoreV1Api coreV1Api = new CoreV1Api();
 
         SharedIndexInformer<V1Secret> secretInformer = factory.sharedIndexInformerFor(
-                callGeneratorParams -> {
-                    try {
-                        return coreV1Api.listSecretForAllNamespacesCall(
-                                null,
-                                null,
-                                labelSelector,
-                                null,
-                                null,
-                                callGeneratorParams.resourceVersion,
-                                callGeneratorParams.timeoutSeconds,
-                                callGeneratorParams.watch,
-                                null,
-                                null);
-                    } catch (ApiException e) {
-                        throw new RuntimeException(e);
-                    }
-                }, V1Secret.class, V1SecretList.class);
+                callGeneratorParams -> coreV1Api.listSecretForAllNamespacesCall(
+                        null,
+                        null,
+                        labelSelector,
+                        null,
+                        null,
+                        callGeneratorParams.resourceVersion,
+                        callGeneratorParams.timeoutSeconds,
+                        callGeneratorParams.watch,
+                        null,
+                        null), V1Secret.class, V1SecretList.class);
 
 
         Controller controller = ControllerBuilder.defaultBuilder(factory).watch(
                 (workQueue) ->
-                ControllerBuilder.controllerWatchBuilder(V1Secret.class, workQueue)
-                        .withWorkQueueKeyFunc(secret ->
-                                new Request(secret.getMetadata().getNamespace(), secret.getMetadata().getName()))
-                        .withOnAddFilter(secret -> {
-                            logger.debug("[{}] receives event: Add; Secret '{}/{}'",
-                                    CONTROLLER_NAME,
-                                    secret.getMetadata().getNamespace(), secret.getMetadata().getName());
-                            return true;
-                        })
-                        .withOnUpdateFilter((oldSecret, newSecret) -> {
-                            String namespace = oldSecret.getMetadata().getNamespace();
-                            String name = oldSecret.getMetadata().getName();
+                        ControllerBuilder.controllerWatchBuilder(V1Secret.class, workQueue)
+                                .withWorkQueueKeyFunc(secret ->
+                                        new Request(secret.getMetadata().getNamespace(), secret.getMetadata().getName()))
+                                .withOnAddFilter(secret -> {
+                                    logger.debug("[{}] receives event: Add; Secret '{}/{}'",
+                                            CONTROLLER_NAME,
+                                            secret.getMetadata().getNamespace(), secret.getMetadata().getName());
+                                    return true;
+                                })
+                                .withOnUpdateFilter((oldSecret, newSecret) -> {
+                                    String namespace = oldSecret.getMetadata().getNamespace();
+                                    String name = oldSecret.getMetadata().getName();
 
-                            logger.debug("[{}] receives event: Update; Secret '{}/{}'",
-                                    CONTROLLER_NAME,
-                                    namespace, name);
+                                    logger.debug("[{}] receives event: Update; Secret '{}/{}'",
+                                            CONTROLLER_NAME,
+                                            namespace, name);
 
-                            return true;
-                        })
-                        .withOnDeleteFilter((secret, aBoolean) -> {
-                            logger.debug("[{}] receives event: Add; Secret '{}/{}'",
-                                    CONTROLLER_NAME,
-                                    secret.getMetadata().getNamespace(), secret.getMetadata().getName());
-                            return true;
-                        }).build())
+                                    lastEventComingTime = LocalDateTime.now();
+
+                                    return true;
+                                })
+                                .withOnDeleteFilter((secret, aBoolean) -> {
+                                    logger.debug("[{}] receives event: Delete; Secret '{}/{}'",
+                                            CONTROLLER_NAME,
+                                            secret.getMetadata().getNamespace(), secret.getMetadata().getName());
+                                    return true;
+                                }).build())
                 .withReconciler(new SecretReconciler(new Lister<>(secretInformer.getIndexer())))
                 .withName(CONTROLLER_NAME)
                 .withWorkerCount(4)
                 .build();
 
-        increaseInformerCapacity(secretInformer);
-
-        controllerManager = manangerBuilder.addController(controller).build();
+        controllerManager = managerBuilder.addController(controller).build();
 
         controllerManagerThread = Executors.newSingleThreadExecutor();
         controllerManagerThread.submit(() -> controllerManager.run());
@@ -149,10 +142,14 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
         }
 
         if (reason != null) {
-            logger.error("Alauda DevOps Credentials Provider is stopped, reason {}", reason);
+            logger.error("Alauda DevOps Credentials Provider is stopped, reason {}", reason.getMessage());
         } else {
             logger.error("Alauda DevOps Credentials Provider is stopped, reason is null, might be stopped by user");
         }
+    }
+
+    public LocalDateTime getLastEventComingTime() {
+        return lastEventComingTime;
     }
 
 
@@ -212,14 +209,14 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
 
             JenkinsRootScope rootScope = ExtensionList.lookup(JenkinsRootScope.class).get(0);
             credentials.forEach((s, credentialsWithMetadata) -> {
-                if (rootScope.shouldShowInScope(Jenkins.getInstance(), credentialsWithMetadata)) {
-                    if (type.isAssignableFrom(credentialsWithMetadata.getCredentials().getClass())) {
-                        C c = type.cast(credentialsWithMetadata.getCredentials());
-                        if (!credentialsWithinScopes.contains(c)) {
-                            credentialsWithinScopes.add(c);
-                        }
+                if (rootScope.shouldShowInScope(Jenkins.getInstance(), credentialsWithMetadata)
+                        && type.isAssignableFrom(credentialsWithMetadata.getCredentials().getClass())) {
+                    C c = type.cast(credentialsWithMetadata.getCredentials());
+                    if (!credentialsWithinScopes.contains(c)) {
+                        credentialsWithinScopes.add(c);
                     }
                 }
+
             });
             return credentialsWithinScopes;
         }
@@ -235,10 +232,9 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
             List<KubernetesSecretScope> scopes = KubernetesSecretScope.matchedScopes(itemGroup);
 
             credentials.forEach((id, credentialsWithMetadata) -> {
-                if (scopes.stream().anyMatch(scope -> scope.shouldShowInScope(itemGroup, credentialsWithMetadata))) {
-                    if (type.isAssignableFrom(credentialsWithMetadata.getCredentials().getClass()) && ids.add(id)) {
-                        list.add(type.cast(credentialsWithMetadata.getCredentials()));
-                    }
+                if (scopes.stream().anyMatch(scope -> scope.shouldShowInScope(itemGroup, credentialsWithMetadata))
+                        && type.isAssignableFrom(credentialsWithMetadata.getCredentials().getClass()) && ids.add(id)) {
+                    list.add(type.cast(credentialsWithMetadata.getCredentials()));
                 }
             });
 
@@ -305,23 +301,8 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
         return "icon-credentials-alauda-store";
     }
 
-
-    private <ApiType> void increaseInformerCapacity(SharedIndexInformer<ApiType> sharedIndexInformer) {
-        try {
-            Field sharedProcessorField = sharedIndexInformer.getClass().getDeclaredField("processor");
-            sharedProcessorField.setAccessible(true);
-            SharedProcessor<ApiType> processor = (SharedProcessor<ApiType>) sharedProcessorField.get(sharedIndexInformer);
-
-            Field listenersField = processor.getClass().getDeclaredField("listeners");
-            listenersField.setAccessible(true);
-            List<ProcessorListener<ApiType>> processorListeners = (List<ProcessorListener<ApiType>>) listenersField.get(processor);
-            for (ProcessorListener<ApiType> processorListener : processorListeners) {
-                Field queueField = processorListener.getClass().getDeclaredField("queue");
-                queueField.setAccessible(true);
-                queueField.set(processorListener, new LinkedBlockingQueue<ProcessorListener.Notification>());
-            }
-        } catch (Throwable throwable) {
-            throwable.printStackTrace();
-        }
+    public void restart() {
+        KubernetesCluster cluster = KubernetesClusterConfiguration.get().getCluster();
+        this.onConfigChange(cluster, Configuration.getDefaultApiClient());
     }
 }
