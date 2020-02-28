@@ -38,7 +38,7 @@ pipeline {
 		// for building an scanning
 		JENKINS_IMAGE = "jenkins/jenkins:lts"
 		REPOSITORY = "alauda-devops-credentials-provider-plugin"
-    PLUGIN_NAME = "alauda-devops-credentials-provider"
+        PLUGIN_NAME = "alauda-devops-credentials-provider"
 		OWNER = "alauda"
 		IMAGE_TAG = "dev"
 		// sonar feedback user
@@ -46,7 +46,7 @@ pipeline {
 		SCM_FEEDBACK_ACCOUNT = "alaudabot"
 		SONARQUBE_SCM_CREDENTIALS = "alaudabot"
 		DINGDING_BOT = "devops-chat-bot"
-		TAG_CREDENTIALS = "alaudabot-github"
+		TAG_CREDENTIALS = "github-bot"
 		IN_K8S = "true"
 	}
 	// stages
@@ -103,11 +103,13 @@ pipeline {
 		stage('Deploy to Nexus') {
 			steps{
 				script{
-					hpiRelease.deploy("-Dmaven.test.skip=true -Dmaven.site.skip=true -Dmaven.javadoc.skip=true")
-					if(hpiRelease.deployToUC){
-						hpiRelease.triggerBackendIndexing(RELEASE_VERSION)
-						hpiRelease.waitUC(PLUGIN_NAME, RELEASE_VERSION, 15)
-					}
+				    container('java') {
+                        hpiRelease.deploy("-Dmaven.test.skip=true -Dmaven.site.skip=true -Dmaven.javadoc.skip=true")
+                        if(hpiRelease.deployToUC){
+                            hpiRelease.triggerBackendIndexing(RELEASE_VERSION)
+                            hpiRelease.waitUC(PLUGIN_NAME, RELEASE_VERSION, 15)
+                        }
+				    }
 				}
 			}
 		}
@@ -120,7 +122,7 @@ pipeline {
 			steps {
 				script {
 					// adding tag to the current commit
-					withCredentials([usernamePassword(credentialsId: TAG_CREDENTIALS, passwordVariable: 'GIT_PASSWORD', usernameVariable: 'GIT_USERNAME')]) {
+					withCredentials([usernamePassword(credentialsId: deploy.getAlaudaCredentialID(TAG_CREDENTIALS), passwordVariable: 'GIT_PASSWORD', usernameVariable: 'GIT_USERNAME')]) {
 						sh "git tag -l | xargs git tag -d" // clean local tags
 						sh """
 							git config --global user.email "alaudabot@alauda.io"
@@ -166,4 +168,3 @@ pipeline {
 		always { junit allowEmptyResults: true, testResults: "**/target/surefire-reports/**/*.xml" }
 	}
 }
-
