@@ -48,23 +48,25 @@ public class SecretConnectionAliveDetectTask extends AsyncPeriodicWork {
                     logger.warn("The watch connection of resource Secret seems broken, retry count {}",  count);
                 } else {
                     logger.debug("There are no resource Secret exists in k8s, will skip this check for it");
+                    return;
                 }
             } catch (ApiException e) {
                 logger.warn("Unable to check if resource Secret exists in k8s, will skip this check for it, reason: {}",  e.getMessage());
+                return;
             }
-            return;
-        }
-
-        Duration elapsed = Duration.between(lastEventComingTime, now);
-
-        // the apiserver will use heartbeat to update resource per 30 seconds, so if we didn't receive an update event in last 1 minute,
-        // the watch connection might broken
-        if (!elapsed.minus(Duration.ofMinutes(1)).isNegative()) {
-            int count = heartbeatLostCount.incrementAndGet();
-            logger.warn("The watch connection of resource Secret seems broken, " +
-                    "last event coming at {}, time since last event coming {}s, retry count {}", lastEventComingTime, elapsed.getSeconds(), count);
         } else {
-            heartbeatLostCount.set(0);
+            Duration elapsed = Duration.between(lastEventComingTime, now);
+
+            // the apiserver will use heartbeat to update resource per 30 seconds, so if we didn't receive an update event in last 1 minute,
+            // the watch connection might broken
+            if (!elapsed.minus(Duration.ofMinutes(1)).isNegative()) {
+                int count = heartbeatLostCount.incrementAndGet();
+                logger.warn("The watch connection of resource Secret seems broken, " +
+                        "last event coming at {}, time since last event coming {}s, retry count {}",
+                    lastEventComingTime, elapsed.getSeconds(), count);
+            } else {
+                heartbeatLostCount.set(0);
+            }
         }
 
         if (heartbeatLostCount.get() > 3) {
