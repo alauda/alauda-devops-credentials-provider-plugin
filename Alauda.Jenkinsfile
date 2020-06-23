@@ -30,7 +30,7 @@ pipeline {
 	}
 
 	parameters {
-				booleanParam(name: 'DEBUG', defaultValue: false, description: 'DEBUG the pipeline')
+        booleanParam(name: 'DEBUG', defaultValue: false, description: 'DEBUG the pipeline')
 	}
 
 	//(optional) 环境变量
@@ -80,12 +80,12 @@ pipeline {
 			steps {
 				script {
 					container('java'){
-							sh """
+                        sh """
 						mvn clean install -U -Dmaven.test.skip=true
-							"""
+                        """
 					}
 
-							archiveArtifacts 'target/*.hpi'
+                    archiveArtifacts 'target/*.hpi'
 				}
 			}
 		}
@@ -105,10 +105,6 @@ pipeline {
 				script{
 				    container('java') {
                         hpiRelease.deploy("-Dmaven.test.skip=true -Dmaven.site.skip=true -Dmaven.javadoc.skip=true")
-                        if(hpiRelease.deployToUC){
-                            hpiRelease.triggerBackendIndexing(RELEASE_VERSION)
-                            hpiRelease.waitUC(PLUGIN_NAME, RELEASE_VERSION, 15)
-                        }
 				    }
 				}
 			}
@@ -142,7 +138,7 @@ pipeline {
 				expression { hpiRelease.deliveryJenkins }
 			}
 			steps {
-			script {
+			    script {
 					hpiRelease.triggerJenkins(PLUGIN_NAME, "io.alauda.jenkins.plugins;${RELEASE_VERSION}")
 				}
 			}
