@@ -2,7 +2,7 @@ package io.alauda.jenkins.plugins.credentials.metadata;
 
 import hudson.ExtensionList;
 import hudson.ExtensionPoint;
-import io.kubernetes.client.models.V1Secret;
+import io.kubernetes.client.openapi.models.V1Secret;
 
 /**
  * Provide metadata sources that implementations can get metadata from sources and add them to credentials.

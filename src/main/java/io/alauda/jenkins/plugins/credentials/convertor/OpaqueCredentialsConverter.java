@@ -4,7 +4,7 @@ import com.cloudbees.plugins.credentials.common.IdCredentials;
 import hudson.Extension;
 import io.alauda.jenkins.plugins.credentials.CredentialsUtils;
 import io.alauda.jenkins.plugins.credentials.SecretUtils;
-import io.kubernetes.client.models.V1Secret;
+import io.kubernetes.client.openapi.models.V1Secret;
 
 import java.util.Map;
 import java.util.Optional;

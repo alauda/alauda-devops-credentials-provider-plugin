@@ -27,8 +27,8 @@ import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.Nullable;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.alauda.jenkins.plugins.credentials.convertor.CredentialsConversionException;
-import io.kubernetes.client.models.V1ObjectMeta;
-import io.kubernetes.client.models.V1Secret;
+import io.kubernetes.client.openapi.models.V1ObjectMeta;
+import io.kubernetes.client.openapi.models.V1Secret;
 import org.kohsuke.accmod.Restricted;
 import org.kohsuke.accmod.restrictions.NoExternalUse;
 

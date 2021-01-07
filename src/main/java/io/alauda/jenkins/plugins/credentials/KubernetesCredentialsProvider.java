@@ -19,9 +19,9 @@ import io.alauda.jenkins.plugins.credentials.metadata.MetadataProvider;
 import io.alauda.jenkins.plugins.credentials.rule.KubernetesSecretRule;
 import io.alauda.jenkins.plugins.credentials.scope.JenkinsRootScope;
 import io.alauda.jenkins.plugins.credentials.scope.KubernetesSecretScope;
-import io.kubernetes.client.ApiClient;
-import io.kubernetes.client.Configuration;
-import io.kubernetes.client.apis.CoreV1Api;
+import io.kubernetes.client.openapi.ApiClient;
+import io.kubernetes.client.openapi.Configuration;
+import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.extended.controller.Controller;
 import io.kubernetes.client.extended.controller.ControllerManager;
 import io.kubernetes.client.extended.controller.builder.ControllerBuilder;
@@ -32,9 +32,9 @@ import io.kubernetes.client.extended.controller.reconciler.Result;
 import io.kubernetes.client.informer.SharedIndexInformer;
 import io.kubernetes.client.informer.SharedInformerFactory;
 import io.kubernetes.client.informer.cache.Lister;
-import io.kubernetes.client.models.V1ObjectMeta;
-import io.kubernetes.client.models.V1Secret;
-import io.kubernetes.client.models.V1SecretList;
+import io.kubernetes.client.openapi.models.V1ObjectMeta;
+import io.kubernetes.client.openapi.models.V1Secret;
+import io.kubernetes.client.openapi.models.V1SecretList;
 import jenkins.model.Jenkins;
 import org.acegisecurity.Authentication;
 import org.slf4j.Logger;
@@ -76,13 +76,14 @@ public class KubernetesCredentialsProvider extends CredentialsProvider implement
                 callGeneratorParams -> coreV1Api.listSecretForAllNamespacesCall(
                         null,
                         null,
+                        null,
                         labelSelector,
                         null,
                         null,
                         callGeneratorParams.resourceVersion,
+                        null,
                         callGeneratorParams.timeoutSeconds,
                         callGeneratorParams.watch,
-                        null,
                         null), V1Secret.class, V1SecretList.class);
 
 

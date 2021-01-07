@@ -27,7 +27,7 @@ import com.cloudbees.plugins.credentials.CredentialsScope;
 import com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl;
 import hudson.Extension;
 import io.alauda.jenkins.plugins.credentials.SecretUtils;
-import io.kubernetes.client.models.V1Secret;
+import io.kubernetes.client.openapi.models.V1Secret;
 
 /**
  * SecretToCredentialConvertor that converts {@link UsernamePasswordCredentialsImpl}.

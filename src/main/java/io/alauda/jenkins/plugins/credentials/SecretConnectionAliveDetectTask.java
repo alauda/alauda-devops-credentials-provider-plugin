@@ -4,9 +4,9 @@ import hudson.Extension;
 import hudson.ExtensionList;
 import hudson.model.AsyncPeriodicWork;
 import hudson.model.TaskListener;
-import io.kubernetes.client.ApiException;
-import io.kubernetes.client.apis.CoreV1Api;
-import io.kubernetes.client.models.V1SecretList;
+import io.kubernetes.client.openapi.ApiException;
+import io.kubernetes.client.openapi.apis.CoreV1Api;
+import io.kubernetes.client.openapi.models.V1SecretList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -86,9 +86,11 @@ public class SecretConnectionAliveDetectTask extends AsyncPeriodicWork {
                 null,
                 null,
                 null,
+                null,
                 1,
                 null,
                 "0",
+                null,
                 null,
                 null);
 
