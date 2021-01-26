@@ -1,7 +1,7 @@
 package io.alauda.jenkins.plugins.credentials.metadata;
 
 import hudson.Extension;
-import io.kubernetes.client.models.V1Secret;
+import io.kubernetes.client.openapi.models.V1Secret;
 
 @Extension
 public class NamespaceProvider implements MetadataProvider {

@@ -2,7 +2,7 @@ package io.alauda.jenkins.plugins.credentials.rule;
 
 import hudson.ExtensionList;
 import hudson.ExtensionPoint;
-import io.kubernetes.client.models.V1Secret;
+import io.kubernetes.client.openapi.models.V1Secret;
 
 /**
  * Defines a series of rules that apply to secret

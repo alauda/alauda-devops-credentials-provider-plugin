@@ -26,7 +26,7 @@ package io.alauda.jenkins.plugins.credentials.convertor;
 import com.cloudbees.plugins.credentials.common.IdCredentials;
 import hudson.ExtensionList;
 import hudson.ExtensionPoint;
-import io.kubernetes.client.models.V1Secret;
+import io.kubernetes.client.openapi.models.V1Secret;
 
 /**
  * Class that converts a secret of a given type to an {@link IdCredentials}.
